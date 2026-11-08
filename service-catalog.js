@@ -1,0 +1,16 @@
+import { STREAMING_SERVICES } from './attribution.js';
+
+// Product capability labels describe this app, not a promise about provider exports.
+export const SERVICE_GUIDES = {
+  spotify: { status: 'Native JSON / ZIP · mapped CSV · manual counts', steps: 'Request Extended Streaming History from Spotify privacy settings. Choose the audio JSON files or ZIP in Spotify files. Ordinary account summaries, playlists and liked songs are not full history.', url: 'https://www.spotify.com/account/privacy/', link: 'Spotify privacy settings' },
+  apple: { status: 'Mapped event CSV · manual counts · optional recent preview', steps: 'Request a copy of Apple Media Services / Apple Music data. Unzip locally and inspect the supplied file guide. If a CSV has one row per actual listening event, map its date, artist and track. Choose seconds or milliseconds only for actual time played. Daily totals, libraries, purchases and catalog track length are not event history. Native Apple archive auto-detection is not available.', url: 'https://privacy.apple.com/', link: 'Apple Data & Privacy' },
+  youtube: { status: 'Experimental limited activity JSON / ZIP · mapped CSV · manual counts', steps: 'Request your YouTube history through Google Takeout in JSON format, then choose YouTube activity JSON below. Only explicit YouTube Music activity with dated listen/watch actions and channel metadata is accepted. General YouTube watch history is excluded. Channel names are not verified recording artists; duration remains unknown. HTML exports and localized action labels are not supported. Tested with synthetic fixtures against the documented activity fields, not a verified real-account archive; some exports may yield no accepted events.', url: 'https://takeout.google.com/', link: 'Google Takeout' },
+  amazon: { status: 'Mapped event CSV · manual counts', steps: 'Use a CSV you already have containing actual dated music listens, or enter self-reported artist counts. Map date, artist and track; leave duration unknown unless actual time played is supplied. Amazon libraries, playlists and purchases do not establish listening. Native Amazon archives and direct account connection are not supported.' },
+  tidal: { status: 'Mapped event CSV · manual counts', steps: 'Use actual dated listening events in CSV or self-reported artist counts. An activity summary or a transferred playlist is not an event log. Native TIDAL archives and direct account connection are not supported.' },
+  deezer: { status: 'Mapped event CSV · manual counts', steps: 'If you have a CSV of dated listens, map its event date, artist and track. Keep duration unknown unless it measures actual time played. Favorites, playlists and library exports are not listening history. Native Deezer archives and direct account connection are not supported.' },
+  qobuz: { status: 'Mapped event CSV · manual counts', steps: 'Import a CSV of actual listening events or enter self-reported counts. Downloads, purchases, favorites and playlists alone do not establish plays. Native Qobuz archives and direct account connection are not supported.' }
+};
+export function serviceGuide(service) {
+  if (!Object.hasOwn(STREAMING_SERVICES, service)) throw new Error('Choose a supported streaming service.');
+  return SERVICE_GUIDES[service];
+}

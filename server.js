@@ -13,6 +13,7 @@ for (const name of ['logo', 'favicon-32', 'favicon-192', 'apple-touch-icon']) pu
 for (const name of ['accounts.js', 'cloud.js', 'firebase-client.js', 'profile.js', 'preservation.js']) publicFiles.add(name);
 for (const name of ['collection.js', 'collection-ui.js']) publicFiles.add(name);
 publicFiles.add('csv-history.js');
+for (const name of ['service-catalog.js', 'service-history.js', 'import-audit.js']) publicFiles.add(name);
 publicFiles.add('workspace.css');
 publicFiles.add('navigation.js');
 publicFiles.add('pages.css');

@@ -41,7 +41,7 @@ test('CSV event disclosures distinguish supplied durations from unknown and manu
   for (const records of [[known], [unknown], [known, unknown]]) {
     const summary = summarize(records);
     const csv = summaryCSV(summary, { sourceType: 'csv', source: 'User-provided CSV history · Spotify self-reported' });
-    assert.match(csv, /User-provided dated CSV listening events/);
+    assert.match(csv, /User-provided dated events/);
     assert.match(csv, /Stream eligibility and coverage completeness are not verified/);
     assert.match(csv, /No royalty estimate/);
     assert.doesNotMatch(csv, /Self-reported counts|Actual duration and eligibility unknown/);

@@ -1,4 +1,5 @@
-export const SERVICES = { unknown: 'Multiple services / Not sure', spotify: 'Spotify', apple: 'Apple Music', youtube: 'YouTube Music', other: 'Another service' };
+export const STREAMING_SERVICES = { spotify: 'Spotify', apple: 'Apple Music', youtube: 'YouTube Music', amazon: 'Amazon Music', tidal: 'TIDAL', deezer: 'Deezer', qobuz: 'Qobuz' };
+export const SERVICES = { unknown: 'Multiple services / Not sure', ...STREAMING_SERVICES, other: 'Another service' };
 export function attribution(service = 'unknown', confirmed = false, scenario = false) {
   if (!Object.hasOwn(SERVICES, service)) throw new Error('Choose a supported service option.');
   if (service !== 'unknown' && !confirmed) throw new Error('Confirm that all scrobbles in the requested period came from this service, or choose Multiple services / Not sure.');

@@ -85,15 +85,16 @@ test('CSV file deduplication respects effective mapping and still deduplicates e
   const same = await runImport([file], { ...first, csv: true, mapping: { ms: 'ms_played', track: 'track', artist: 'artist', date: 'date' } });
   assert.equal(same.previews[0].status, 'duplicate file');
   const changed = await runImport([file], { ...same, csv: true, mapping: { ...mapping, track: 'alternate' } });
-  assert.equal(changed.previews[0].status, 'accepted');
-  assert.deepEqual(changed.records.map(r => r.track), ['Track A', 'Track B']);
+  assert.equal(changed.previews[0].status, 'rejected');
+  assert.match(changed.messages.join(' '), /different mapping or duration unit/);
+  assert.deepEqual(changed.records.map(r => r.track), ['Track A']);
   const overlap = new File(['date,artist,track,alternate,ms_played\n2026-01-01,Artist,Track A,Track B,60000\n2026-01-02,Artist,Track C,Track D,60000'], 'overlap.csv');
   const appended = await runImport([overlap], { ...changed, csv: true, mapping });
   assert.equal(appended.previews[0].duplicates, 1);
-  assert.equal(appended.records.length, 3);
+  assert.equal(appended.records.length, 2);
   const unknown = await runImport([file], { ...first, csv: true, mapping: { ...mapping, ms: '' } });
-  assert.equal(unknown.previews[0].status, 'accepted');
-  assert.equal(unknown.records.at(-1).ms, null);
+  assert.equal(unknown.previews[0].status, 'rejected');
+  assert.equal(unknown.records.at(-1).ms, 60000);
 });
 
 test('diagnostics omit metadata and raw records; import reports distinguish accepted and failed files', async () => {

@@ -1,4 +1,6 @@
 import { RATE, summarize, validRecordDate } from './lib.js';
+import { YOUTUBE_ACTIVITY_DISCLOSURE } from './service-history.js';
+import { activityAuditText } from './import-audit.js';
 
 const DAY = 86400000;
 const iso = date => date.toISOString().slice(0, 10);
@@ -50,17 +52,17 @@ export function csvCell(value) {
   if (/^[\s\u0000-\u001f]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
-export function summaryCSV(summary, { source, sourceType, from = '', to = '', duplicates = 0, attribution = null } = {}) {
+export function summaryCSV(summary, { source, sourceType, from = '', to = '', duplicates = 0, attribution = null, youtubeActivity = false, activityAudit = null } = {}) {
   const scrobbles = summary.amount === null && source?.startsWith('Last.fm');
   const unpriced = summary.amount === null;
   const scenario = scrobbles && attribution?.service === 'spotify' && attribution.confirmed && attribution.scenario;
-  const assumptions = sourceType === 'csv' ? `User-provided dated CSV listening events; service and durations are unverified. ${summary.ms === null ? 'Some or all included events have unknown duration; total listening hours are unavailable.' : 'Listening hours use supplied durations for included events.'} Stream eligibility and coverage completeness are not verified. No royalty estimate.` : unpriced && !scrobbles ? 'Self-reported counts. No validated service benchmark; no royalty estimate. Actual duration and eligibility unknown.' : scrobbles ? `Last.fm recorded scrobbles, not verified paid streams. Service ${attribution?.confirmed ? 'self-reported' : 'mixed or unknown'}; actual duration and eligibility unknown. ${scenario ? 'Hypothetical Spotify historical benchmark scenario, not confirmed earnings or artist take-home. Plan and country not adjusted.' : 'No royalty estimate.'} Coverage completeness not verified.` : 'Historical blended estimate; not confirmed earnings or artist take-home. Plan, country, contracts and eligibility not adjusted. Coverage completeness not verified.';
+  const assumptions = sourceType === 'csv' ? `User-provided dated events (mapped CSV or limited music-marked activity); service and durations are unverified. ${summary.ms === null ? 'Some or all included events have unknown duration; total listening hours are unavailable.' : 'Listening hours use supplied durations for included events.'} Stream eligibility and coverage completeness are not verified. No royalty estimate.` : unpriced && !scrobbles ? 'Self-reported counts. No validated service benchmark; no royalty estimate. Actual duration and eligibility unknown.' : scrobbles ? `Last.fm recorded scrobbles, not verified paid streams. Service ${attribution?.confirmed ? 'self-reported' : 'mixed or unknown'}; actual duration and eligibility unknown. ${scenario ? 'Hypothetical Spotify historical benchmark scenario, not confirmed earnings or artist take-home. Plan and country not adjusted.' : 'No royalty estimate.'} Coverage completeness not verified.` : 'Historical blended estimate; not confirmed earnings or artist take-home. Plan, country, contracts and eligibility not adjusted. Coverage completeness not verified.';
   const header = ['row_type', 'artist', 'included_plays', 'listening_hours', 'personal_listening_share_percent', 'estimated_recording_royalties_usd', 'source', 'from_utc', 'to_utc', 'benchmark', 'benchmark_year', 'usd_per_play', 'short_excluded', 'unsupported_excluded', 'invalid_records_all_dates', 'outside_dates', 'duplicates_removed_all_dates', 'assumptions'];
   if (scrobbles) header[2] = 'recorded_scrobbles';
   if (scenario) header[5] = 'hypothetical_spotify_benchmark_scenario_usd';
   header.push('reported_service', 'service_attribution', 'original_request_from_utc', 'original_request_to_utc');
   const priced = !unpriced || scenario;
   const row = (kind, a) => [kind, a.name, a.plays, a.ms === null ? '' : (a.ms / 3600000).toFixed(4), summary.plays ? (a.plays / summary.plays * 100).toFixed(4) : '0', priced ? (a.plays * RATE).toFixed(6) : '', source, from, to, priced ? 'Duetti Spotify sample' : '', priced ? 2024 : '', priced ? RATE : '',
-    ...['short', 'unsupported', 'invalid', 'outside'].map(key => kind === 'TOTAL' ? summary.audit?.[key] ?? '' : ''), kind === 'TOTAL' ? duplicates : '', assumptions, attribution?.service || '', attribution ? (attribution.confirmed ? 'self-reported, not verified' : 'mixed / unknown') : '', attribution?.from || '', attribution?.to || ''];
+    ...['short', 'unsupported', 'invalid', 'outside'].map(key => kind === 'TOTAL' ? summary.audit?.[key] ?? '' : ''), kind === 'TOTAL' ? duplicates : '', assumptions + (youtubeActivity ? ` ${YOUTUBE_ACTIVITY_DISCLOSURE}` : '') + (activityAudit ? ` ${activityAuditText(activityAudit)}` : ''), attribution?.service || '', attribution ? (attribution.confirmed ? 'self-reported, not verified' : 'mixed / unknown') : '', attribution?.from || '', attribution?.to || ''];
   return '\ufeff' + [header, row('TOTAL', { name: 'All artists', plays: summary.plays, ms: summary.ms }), ...summary.artists.map(a => row('ARTIST', a))].map(r => r.map(csvCell).join(',')).join('\r\n');
 }

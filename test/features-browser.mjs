@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { visitControl } from './page-helpers.mjs';
 import { sessionText } from '../session.js';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch();
+import { launchBrowser } from './browser-engine.mjs';
+const browser = await launchBrowser();
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

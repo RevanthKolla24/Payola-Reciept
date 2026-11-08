@@ -1,6 +1,7 @@
 import { summarize, validTimestamp } from './lib.js';
 import { bounds, comparePeriods } from './reports.js';
 import { listeningInsights } from './insights.js';
+import { validateActivityAudit } from './import-audit.js';
 
 export function includedRecords(records, filters = {}) {
   return records.filter(r => !r.invalid && r.supported && (!filters.from || r.date >= filters.from) && (!filters.to || r.date <= filters.to) && (r.source === 'lastfm' || r.ms === null || r.ms >= 30000));
@@ -54,12 +55,12 @@ export function compareSessions(left, right) {
     const before = artistsA.get(name)?.plays || 0, after = artistsB.get(name)?.plays || 0;
     return { name, before, after, delta: (b.plays ? after / b.plays * 100 : 0) - (a.plays ? before / a.plays * 100 : 0) };
   }).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta) || x.name.localeCompare(y.name));
-  const describe = (s, summary) => ({ mode: s.mode, service: s.selectedService, plays: summary.plays, hours: s.mode === 'lastfm' || summary.ms === null ? null : summary.ms / 3600000, artists: summary.artists.length, observed: bounds(s.records.filter(r => !r.invalid)), filters: s.filters, declaration: s.mode === 'lastfm' ? { service: s.attribution.service, confirmed: s.attribution.confirmed, from: s.attribution.from, to: s.attribution.to } : null });
+  const describe = (s, summary) => ({ mode: s.mode, service: s.mode === 'lastfm' ? s.attribution.confirmed ? s.attribution.service : 'unknown' : s.selectedService, plays: summary.plays, hours: s.mode === 'lastfm' || summary.ms === null ? null : summary.ms / 3600000, artists: summary.artists.length, observed: bounds(s.records.filter(r => !r.invalid)), filters: s.filters, declaration: s.mode === 'lastfm' ? { service: s.attribution.service, confirmed: s.attribution.confirmed, from: s.attribution.from, to: s.attribution.to } : null });
   return { left: describe(left, a), right: describe(right, b), sharedArtists, sharedTracks: [...ta].filter(key => tb.has(key)).length, changes };
 }
 
 // Intentionally exclude filenames, artist/track metadata, timestamps and raw records.
-export function safeDiagnostics(report, fileReports = []) {
+export function safeDiagnostics(report, fileReports = [], activityAudit = null) {
   const counts = Object.fromEntries(['records', 'included', 'short', 'unsupported', 'invalid', 'outside', 'duplicates', 'knownDuration', 'unknownDuration'].map(key => [key, report[key]]));
-  return { format: 'payola-diagnostics', version: 1, ...counts, coverage: { from: report.coverage.from, to: report.coverage.to }, filtered: { from: report.filtered.from, to: report.filtered.to }, files: fileReports.map((file, i) => ({ file: i + 1, status: ['accepted', 'rejected', 'duplicate file'].includes(file.status) ? file.status : 'accepted', records: file.records || 0, added: file.added || 0, duplicates: file.duplicates || 0, invalid: file.invalid || 0, short: file.short || 0, unsupported: file.unsupported || 0 })) };
+  return { format: 'payola-diagnostics', version: 1, ...counts, ...(activityAudit ? { activityAudit: validateActivityAudit(activityAudit) } : {}), coverage: { from: report.coverage.from, to: report.coverage.to }, filtered: { from: report.filtered.from, to: report.filtered.to }, files: fileReports.map((file, i) => ({ file: i + 1, status: ['accepted', 'rejected', 'duplicate file'].includes(file.status) ? file.status : 'accepted', records: file.records || 0, added: file.added || 0, duplicates: file.duplicates || 0, invalid: file.invalid || 0, short: file.short || 0, unsupported: file.unsupported || 0 })) };
 }

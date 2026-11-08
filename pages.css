@@ -13,6 +13,11 @@
 #receipt-editor label { display: grid; gap: 8px; }
 #receipt-note { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #bcc6b9; border-radius: 8px; font: inherit; resize: vertical; }
 /* Main-site page composition. Apple preview intentionally keeps its own theme. */
+.service-guide { margin-top: 24px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--field); }
+.service-guide h3 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+.service-guide p { font-size: 13px; line-height: 1.8; max-width: 85ch; }
+.service-guide .section-tag { display: inline-block; white-space: normal; }
+#youtube-import-note { padding: 14px; border-left: 3px solid var(--ink); background: var(--soft); }
 html { scroll-behavior: auto; scrollbar-gutter: stable; }
 [hidden] { display: none !important; }
 .workspace-page { --shadow: 0 12px 40px #523a5608; }
@@ -99,7 +104,33 @@ html { scroll-behavior: auto; scrollbar-gutter: stable; }
 .workspace-page .listening-setup .workspace-heading h2 { font-size: 36px; }
 .workspace-page .toolbar { grid-template-columns: 220px minmax(0, 1fr); }
 .page-next { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 20px; margin-top: 24px; font-size: 12px; color: var(--muted); }
-.workspace-page [data-page="/help"] { max-width: 1000px; margin: auto; }
+.workspace-page [data-page="/help"] { max-width: 1120px; margin: auto; }
+
+/* One shared Help layout, independent of the legacy methodology/card styles. */
+.help-header { max-width: 680px; margin-bottom: 32px; }
+.workspace-page .help-header h2 { font: 400 clamp(36px, 4vw, 48px)/1.12 Georgia, 'Times New Roman', serif; letter-spacing: -1.3px; margin: 12px 0 16px; }
+.help-header > p { color: var(--muted); font-size: 15px; line-height: 1.75; margin: 0; max-width: 62ch; }
+.help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 24px; }
+.workspace-page .help-grid .help-panel, .workspace-page .help-grid #help-privacy { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px; margin: 0; box-shadow: var(--shadow); }
+.help-panel h3 { font-size: 21px; line-height: 1.3; font-weight: 500; letter-spacing: -.5px; margin: 12px 0 8px; }
+.help-panel .help-panel-intro { font-size: 13px; line-height: 1.7; color: var(--muted); margin: 0 0 24px; }
+.help-panel .help-faq { border-top: 1px solid var(--line); }
+.help-panel .help-faq > summary, #help-privacy .help-faq > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 18px 0; cursor: pointer; list-style: none; font-size: 14px; font-weight: 500; line-height: 1.5; }
+.help-panel .help-faq > summary::-webkit-details-marker { display: none; }
+.help-panel .help-faq > summary::marker { content: ''; }
+.help-panel .help-faq > summary:hover { color: var(--muted); }
+.help-panel .help-faq > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 4px; }
+.faq-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--soft); color: var(--ink); }
+.faq-icon::before { content: '+'; font: 400 20px/1 Arial, Helvetica, sans-serif; }
+.help-faq[open] > summary .faq-icon::before { content: '−'; }
+.help-answer { padding: 0 0 20px; overflow-wrap: anywhere; }
+.workspace-page .help-answer p, .workspace-page #help-privacy .help-answer p { color: var(--muted); font-size: 13px; line-height: 1.85; margin: 0 0 12px; }
+.help-answer > :last-child { margin-bottom: 0; }
+.help-answer a { text-decoration: underline; text-underline-offset: 3px; }
+.help-answer h4 { font-size: 12px; margin: 18px 0 8px; }
+.help-answer .audit { padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; line-height: 1.8; }
+.help-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.help-next p { margin: 0; color: var(--muted); font-size: 13px; }
 .workspace-page .methodology { margin-top: 0; padding-top: 0; }
 .workspace-page #unsaved-history { margin: 0 0 28px; }
 .workspace-page #unsaved-history a { text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
@@ -162,6 +193,10 @@ html:has(#artist-dialog[open]) { overflow: hidden; }
   .workspace-page nav { justify-content: flex-start; }
 }
 @media (max-width: 760px) {
+  .help-header { margin-bottom: 24px; }
+  .help-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .workspace-page .help-grid .help-panel, .workspace-page .help-grid #help-privacy { padding: 22px 20px; }
+  .help-panel h3 { font-size: 20px; }
   .workspace-page .site-header { padding: 18px 20px 12px; gap: 16px; }
   .workspace-page .brand { font-size: 21px; }
   .workspace-page nav { width: 100%; display: flex; gap: 4px; justify-content: flex-start; }

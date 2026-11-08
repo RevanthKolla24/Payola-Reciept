@@ -4,14 +4,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { makeZip } from './zip-fixture.js';
 import { sessionText } from '../session.js';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch();
+import { launchBrowser } from './browser-engine.mjs';
+const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [], external = [];
   page.on('pageerror', e => errors.push(e.message));
   const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
-  page.on('request', r => { if (!r.url().startsWith(`${base}/`)) external.push(r.url()); });
+  page.on('request', r => { if (!r.url().startsWith(`${base}/`) && !r.url().startsWith(`blob:${base}/`)) external.push(r.url()); });
   await page.route('**/api/integrations', route => route.fulfill({ json: { lastfm: true, apple: true } }));
   await page.goto(base);
   await page.waitForFunction(() => !document.querySelector('[data-mode="lastfm"]').disabled);
@@ -72,7 +72,7 @@ try {
   assert.equal(await page.locator('.artist-name').first().textContent(), 'Luna Vale');
   await visitControl(page, '#service-picker');
   await page.locator('#service-picker').selectOption('apple');
-  assert.match(await page.locator('#input-panel').textContent(), /Mapped CSV listening history is supported and unpriced/);
+  assert.match(await page.locator('#input-panel').textContent(), /Mapped event CSV and manual counts work for all seven services/);
   await visitControl(page, '[data-mode="csv"]');
   await page.locator('[data-mode="csv"]').click();
   await page.locator('#csv-guided').uncheck();
@@ -467,7 +467,7 @@ try {
   await visitControl(page, '#service-picker');
   await visitControl(page, '[data-mode="import"]');
   assert.equal(await page.locator('[data-mode="import"]').isVisible(), true);
-  assert.match(await page.locator('#service-help').textContent(), /Spotify Extended History JSON\/ZIP imports are supported/);
+  assert.match(await page.locator('#service-help').textContent(), /Spotify · Native JSON \/ ZIP/);
   await visitControl(page, '#apple-preview-link');
   assert.equal(await page.locator('#apple-preview-link').isVisible(), false);
   assert.match(await page.locator('#history-details').textContent(), /Fictional Spotify sample/);

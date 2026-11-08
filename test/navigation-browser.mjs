@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { pages } from '../navigation.js';
 import { sessionText } from '../session.js';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch();
+import { launchBrowser } from './browser-engine.mjs';
+const browser = await launchBrowser();
 const base = process.env.TEST_URL || 'http://127.0.0.1:3000';
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -63,6 +63,7 @@ try {
   assert.equal(await page.locator('#artist-dialog').evaluate(el => el.open), true);
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overflow), 'hidden');
   await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('#artist-dialog').open);
   assert.equal(await page.locator('.artist-button:focus').count(), 1);
   assert.notEqual(await page.evaluate(() => getComputedStyle(document.documentElement).overflow), 'hidden');
   // Pending reviews are not discarded merely by visiting another page.
@@ -98,8 +99,45 @@ try {
       assert.equal(new Set(ids).size, ids.length);
     }
   }
+  // Help uses the same native keyboard-accessible accordions in both panels.
+  direct.on('pageerror', error => errors.push(error.message));
+  for (const width of [1920, 1440, 1024, 768, 390, 320]) {
+    await direct.setViewportSize({ width, height: 900 });
+    await direct.goto(base + '/help');
+    await direct.waitForSelector('.help-grid');
+    assert.equal(await direct.locator('.help-page h2').count(), 1);
+    assert.equal(await direct.locator('.help-panel').count(), 2);
+    assert.equal(await direct.locator('.help-faq[open]').count(), 0);
+    const panels = await direct.locator('.help-panel').evaluateAll(elements => elements.map(el => {
+      const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+      return { x: rect.x, y: rect.y, width: rect.width, padding: style.padding, background: style.backgroundColor };
+    }));
+    assert.ok(Math.abs(panels[0].width - panels[1].width) < 1, `${width}px equal FAQ panel widths`);
+    assert.equal(panels[0].padding, panels[1].padding);
+    assert.equal(panels[0].background, panels[1].background);
+    if (width > 760) assert.equal(panels[0].y, panels[1].y, `${width}px panels align at top`);
+    else assert.ok(panels[1].y > panels[0].y, `${width}px panels stack`);
+    const summaries = direct.locator('.help-faq > summary');
+    for (let i = 0; i < await summaries.count(); i++) {
+      const summary = summaries.nth(i), answer = summary.locator('..').locator('.help-answer');
+      await summary.focus();
+      assert.equal(await summary.evaluate(el => getComputedStyle(el).outlineStyle), 'solid');
+      assert.equal(await summary.locator('.faq-icon').evaluate(el => getComputedStyle(el, '::before').content), '"+"');
+      await direct.keyboard.press('Enter');
+      assert.equal(await answer.isVisible(), true);
+      assert.equal(await summary.locator('.faq-icon').evaluate(el => getComputedStyle(el, '::before').content), '"−"');
+      assert.equal(await direct.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${width}px expanded FAQ ${i} overflows`);
+      await direct.keyboard.press('Space');
+      assert.equal(await answer.isVisible(), false);
+    }
+    await direct.locator('#methodology .help-faq').nth(2).locator('summary').click();
+    assert.match(await direct.locator('#audit').textContent(), /Included:/);
+    await direct.screenshot({ path: `/tmp/payola-help-${width}.png`, fullPage: true });
+  }
   await direct.goto(base + '/dashboard');
-  await direct.keyboard.press('Tab');
+  // Firefox/macOS does not necessarily tab through links without the OS option.
+  // Focus the skip link explicitly, then test its keyboard activation everywhere.
+  await direct.locator('.skip-link').focus();
   await direct.keyboard.press('Enter');
   assert.equal(await direct.locator('#main-content:focus').count(), 1);
   await direct.emulateMedia({ reducedMotion: 'reduce' });
@@ -129,7 +167,7 @@ try {
   await direct.locator('#save-session').click();
   assert.equal((await sessionDownload).suggestedFilename(), 'payola-reciept-session.json');
   assert.deepEqual(errors, []);
-  console.log('Page navigation, scroll restoration, session/review preservation, receipt export, dialogs, keyboard and 35 responsive route checks passed.');
+  console.log('Page navigation, scroll restoration, session/review preservation, receipt export, dialogs, keyboard, 35 responsive route checks and Help FAQ interaction/layout checks at 6 widths passed.');
 } finally {
   await browser.close();
 }

@@ -3,6 +3,7 @@ import { qualityReport, recap, artistDetails, listeningPatterns, compareSessions
 import { parseSession, MAX_SESSION_FILE_BYTES } from './session.js';
 import { comparePeriods } from './reports.js';
 import { SERVICES } from './attribution.js';
+import { activityAuditText } from './import-audit.js';
 
 const $ = selector => document.querySelector(selector);
 export function downloadText(text, name, type = 'application/json') {
@@ -55,7 +56,7 @@ export function initExplore({ state, downloadCard }) {
   });
   $('#download-diagnostics').addEventListener('click', () => {
     const s = state();
-    if (window.confirm('Download counts and date coverage? No filenames, artist/track names or raw listening records are included.')) downloadText(JSON.stringify(safeDiagnostics(qualityReport(s.records, s.filters, s.duplicates), s.files), null, 2), 'payola-diagnostics.json');
+    if (window.confirm('Download counts and date coverage? No filenames, artist/track names or raw listening records are included.')) downloadText(JSON.stringify(safeDiagnostics(qualityReport(s.records, s.filters, s.duplicates), s.files, s.activityAudit), null, 2), 'payola-diagnostics.json');
   });
   $('#download-recap').addEventListener('click', () => downloadCard(null, 'listening'));
   $('#preview-receipt').addEventListener('click', () => downloadCard(null, $('#receipt-style').value, true));
@@ -99,7 +100,9 @@ export function initExplore({ state, downloadCard }) {
       $('#receipt-metric option[value="hours"]').disabled = s.result.ms === null;
       if (s.result.ms === null) $('#receipt-metric').value = 'plays';
       $('#quality-report').innerHTML = s.mode === 'manual' ? '<p>Manual counts cannot be audited for dates, duration or stream eligibility.</p>' : `<dl class="quality-grid">${[['Retained records', q.records], ['Included', q.included], ['Short plays (<30 seconds)', q.short], ['Unsupported', q.unsupported], ['Invalid / unassignable date', q.invalid], ['Outside selected dates', q.outside], ['Matching occurrences removed', q.duplicates], ['Included with known duration', q.knownDuration], ['Included with unknown duration', q.unknownDuration]].map(([label, value]) => `<div><dt>${label}</dt><dd>${number(value)}</dd></div>`).join('')}</dl><p>Observed dates: ${esc(q.coverage.from || 'unavailable')} – ${esc(q.coverage.to || 'unavailable')}. Counts describe retained records; removed duplicates are reported separately. Short/unsupported classifications apply inside the selected period. Invalid records cannot be assigned to a date range.</p>`;
-      $('#quality-files').innerHTML = s.files.length ? s.files.map(f => `<p><strong>${esc(f.name)}</strong> · ${esc(f.status)}<br>${number(f.records || 0)} parsed · ${number(f.added || 0)} retained · ${number(f.duplicates || 0)} duplicates · ${number(f.invalid || 0)} invalid · ${number(f.short || 0)} short · ${number(f.unsupported || 0)} unsupported</p>`).join('') : '<p>No per-file results available. File reports stay in this tab and are not restored from session files.</p>';
+      if (s.activityAudit) $('#quality-report').insertAdjacentHTML('beforeend', `<p class="activity-input-audit">${esc(activityAuditText(s.activityAudit))}</p>`);
+      else if (s.records.some(record => record.origin === 'youtube-takeout')) $('#quality-report').insertAdjacentHTML('beforeend', '<p>Activity input exclusion counts are unavailable in this older backup; zero exclusions must not be inferred.</p>');
+      $('#quality-files').innerHTML = s.files.length ? s.files.map(f => `<p><strong>${esc(f.name)}</strong> · ${esc(f.status)}<br>${number(f.records || 0)} parsed · ${number(f.added || 0)} retained · ${number(f.duplicates || 0)} duplicates · ${number(f.invalid || 0)} invalid · ${number(f.short || 0)} short · ${number(f.unsupported || 0)} unsupported${f.exclusions ? `<br>Input entries: ${number(f.inputRecords)} · general/ambiguous excluded: ${number(f.exclusions.ambiguous)} · non-listening excluded: ${number(f.exclusions.nonListening)} · invalid/missing metadata excluded: ${number(f.exclusions.invalid)}` : ''}</p>`).join('') : '<p>No per-file results available. File reports stay in this tab and are not restored from session files.</p>';
       const p = listeningPatterns(s.records, s.filters);
       const bars = (values, labels) => `<ol class="pattern-bars">${values.map((value, i) => `<li><span>${esc(labels[i])}</span><meter min="0" max="${Math.max(1, ...values)}" value="${value}">${value}</meter><span>${number(value)}</span></li>`).join('')}</ol>`;
       $('#listening-patterns').innerHTML = !p.timed ? '<p>Unavailable: this view has no validated precise timestamps. Date-only CSVs, old backups and manual counts never produce hourly patterns.</p>' : `<p>${number(p.timed)} of ${number(p.included)} included records have validated timestamps. UTC only; export timestamps may describe playback end, not start. Patterns describe this subset, not all listening.</p><details><summary>Hour of day</summary>${bars(p.hours, p.hours.map((_, i) => `${String(i).padStart(2, '0')}:00`))}</details><details><summary>Day of week</summary>${bars(p.weekdays, ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'])}</details><p>Longest observed consecutive-day run: ${p.longest} days. Gaps may mean missing data, not inactivity.</p><h4>Busiest observed days</h4><ul>${p.busiest.map(([date, count]) => `<li>${esc(date)} · ${number(count)} included</li>`).join('')}</ul>`;

@@ -12,7 +12,7 @@ export function createCSVGuide({ lock, start, notice, externalBusy = () => false
     if ($('#history-files')) $('#history-files').value = '';
     if ($('#csv-guide')) $('#csv-guide').hidden = true;
   }
-  function mapping() { return Object.fromEntries(keys.map(key => [key, $(`#csv-${key}`).value.trim()])); }
+  function mapping() { return { ...Object.fromEntries(keys.map(key => [key, $(`#csv-${key}`).value.trim()])), ...($('#csv-duration-unit')?.value === 'seconds' ? { durationUnit: 'seconds' } : {}) }; }
   function inspect(selection, withMapping) {
     if (inspecting || externalBusy()) return;
     const token = ++generation; inspecting = true; ready = false; files = selection;
@@ -54,11 +54,13 @@ export function createCSVGuide({ lock, start, notice, externalBusy = () => false
       const saved = JSON.parse(localStorage.getItem('payola-csv-mapping') || 'null');
       if (saved && keys.every(key => typeof saved[key] === 'string' && saved[key].length <= 500)) {
         for (const key of keys) $(`#csv-${key}`).value = saved[key];
+        if (saved.durationUnit === 'seconds') $('#csv-duration-unit').value = 'seconds';
         $('#remember-csv-mapping').checked = true;
       }
     } catch { /* Optional preference storage. */ }
     const invalidate = () => { ready = false; $('#csv-stage').disabled = true; };
     mappingPanel.addEventListener('input', invalidate);
+    $('#csv-duration-unit').addEventListener('change', invalidate);
     $('#csv-column-selects').addEventListener('change', event => {
       const key = event.target.dataset.guideKey;
       if (keys.includes(key)) { $(`#csv-${key}`).value = event.target.value; invalidate(); }
@@ -67,7 +69,7 @@ export function createCSVGuide({ lock, start, notice, externalBusy = () => false
     $('#csv-refresh-preview').addEventListener('click', () => { if (files.length) inspect(files, true); });
     $('#csv-cancel-guide').addEventListener('click', () => { if (externalBusy()) return; cancel(); notice('CSV selection cancelled. Existing history is unchanged.'); });
     $('#forget-csv-mapping').addEventListener('click', () => {
-      try { localStorage.removeItem('payola-csv-mapping'); $('#remember-csv-mapping').checked = false; notice('Saved column mapping removed.'); }
+      try { localStorage.removeItem('payola-csv-mapping'); $('#remember-csv-mapping').checked = false; notice('Saved column mapping removed from this device. Current fields and duration unit are unchanged; review them before staging.'); }
       catch { notice('Browser storage could not be updated.'); }
     });
     $('#csv-stage').addEventListener('click', () => {

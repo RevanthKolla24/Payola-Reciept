@@ -1,8 +1,8 @@
 import { visitControl } from './page-helpers.mjs';
 import assert from 'node:assert/strict';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import { launchBrowser } from './browser-engine.mjs';
 const base = process.env.TEST_URL || 'http://127.0.0.1:3001';
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 // Mock only the Firebase adapter. Exercise real UI, session codec and store.
 const adapter = `
 export async function connectFirebase() {

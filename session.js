@@ -1,5 +1,6 @@
 import { manualSummary, manualArtistsSummary, RATE, validRecordDate as date, validListeningRecord } from './lib.js';
-import { attribution } from './attribution.js';
+import { attribution, STREAMING_SERVICES } from './attribution.js';
+import { validateActivityAudit } from './import-audit.js';
 
 export const MAX_SESSION_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_RECORDS = 200000;
@@ -12,11 +13,16 @@ export function validateSession(input) {
   if (!input || input.format !== 'payola-draft-session' || ![1, 2].includes(input.version) || !['sample', 'import', 'csv', 'lastfm', 'manual'].includes(input.mode)) fail();
   if (input.version === 2 && (input.mode !== 'manual' || !Array.isArray(input.manual?.artists))) fail();
   if (input.benchmark?.usdPerPlay !== RATE || input.benchmark?.year !== 2024 || input.benchmark?.source !== 'Duetti Spotify sample') fail();
-  if (!['spotify', 'apple', 'youtube'].includes(input.selectedService)) fail();
+  if (!Object.hasOwn(STREAMING_SERVICES, input.selectedService)) fail();
   const filters = input.filters;
   if (!filters || !['from', 'to'].every(key => filters[key] === '' || date(filters[key])) || (filters.from && filters.to && filters.from > filters.to)) fail();
   if (!Array.isArray(input.records) || input.records.length > MAX_RECORDS || !count(input.duplicates)) fail();
   const mode = input.mode;
+  let activityAudit;
+  if (input.activityAudit !== undefined) {
+    if (mode !== 'csv' || input.selectedService !== 'youtube') fail();
+    activityAudit = validateActivityAudit(input.activityAudit);
+  }
   if ((mode === 'import' || mode === 'sample') && input.selectedService !== 'spotify') fail();
   const records = input.records.map(r => {
     if (!r || typeof r !== 'object') fail();
@@ -24,7 +30,8 @@ export function validateSession(input) {
     if (!r.supported && mode !== 'lastfm') r = { ...r, artist: r.artist ?? '', track: r.track ?? '' };
     if (!validListeningRecord(r, mode === 'lastfm')) fail();
     if ((mode === 'csv') !== (r.source === 'csv')) fail();
-    return { date: r.date, artist: r.artist, track: r.track, supported: r.supported, ms: r.ms, ...(['lastfm', 'csv'].includes(mode) ? { source: mode } : {}), ...(r.eventKey ? { eventKey: r.eventKey } : {}), ...(r.timestamp ? { timestamp: r.timestamp } : {}) };
+    if (r.origin !== undefined && (r.origin !== 'youtube-takeout' || mode !== 'csv' || input.selectedService !== 'youtube' || r.ms !== null)) fail();
+    return { date: r.date, artist: r.artist, track: r.track, supported: r.supported, ms: r.ms, ...(['lastfm', 'csv'].includes(mode) ? { source: mode } : {}), ...(r.origin ? { origin: r.origin } : {}), ...(r.eventKey ? { eventKey: r.eventKey } : {}), ...(r.timestamp ? { timestamp: r.timestamp } : {}) };
   });
   let declaration = attribution(), loaded = null, manual = null;
   if (mode === 'lastfm') {
@@ -44,13 +51,14 @@ export function validateSession(input) {
     }
     if (input.selectedService !== 'spotify') manual.amount = null;
   }
-  return { mode, selectedService: input.selectedService, records, filters: { from: filters.from, to: filters.to }, duplicates: input.duplicates, attribution: declaration, lastfm: loaded, manual };
+  return { mode, selectedService: input.selectedService, records, filters: { from: filters.from, to: filters.to }, duplicates: input.duplicates, attribution: declaration, lastfm: loaded, manual, ...(activityAudit ? { activityAudit } : {}) };
 }
 
 export function sessionText(state) {
   const data = { format: 'payola-draft-session', version: 1, benchmark: { source: 'Duetti Spotify sample', year: 2024, usdPerPlay: RATE }, ...state };
   if (state.mode === 'manual' && Array.isArray(state.manual?.artists)) data.version = 2;
   validateSession(data);
+  if (data.activityAudit !== undefined) data.activityAudit = validateActivityAudit(data.activityAudit);
   const output = JSON.stringify(data);
   if (new TextEncoder().encode(output).byteLength > MAX_SESSION_FILE_BYTES) throw new Error('Session exceeds the 25 MB download/restore limit. A summary CSV is not a full backup. Keep this tab open until you have preserved your history.');
   return output;

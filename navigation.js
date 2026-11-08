@@ -12,6 +12,13 @@ export function initNavigation() {
   let current;
   let restoration;
   history.scrollRestoration = 'manual';
+  // Explicit focus works consistently for skip-link activation in every engine;
+  // fragment scrolling alone does not reliably move Safari's keyboard focus.
+  document.querySelector('.skip-link')?.addEventListener('click', event => {
+    event.preventDefault();
+    main.focus({ preventScroll: true });
+    main.scrollIntoView({ block: 'start' });
+  });
 
   function show(path, { pop = false, initial = false } = {}) {
     if (!(path in pages)) return;

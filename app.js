@@ -3,6 +3,9 @@ import { initExplore } from './explore-ui.js';
 import { createCSVGuide } from './csv-guide.js';
 import { bounds, presetRange, comparePeriods, summaryCSV } from './reports.js';
 import { attribution, attributionText, SERVICES } from './attribution.js';
+import { serviceGuide } from './service-catalog.js';
+import { YOUTUBE_ACTIVITY_DISCLOSURE, YOUTUBE_ACTIVITY_DISCLOSURE_LINES } from './service-history.js';
+import { activityAuditText } from './import-audit.js';
 import { loadLastfm } from './lastfm-client.js';
 import { sessionText, parseSession, MAX_SESSION_FILE_BYTES } from './session.js';
 import { listeningInsights } from './insights.js';
@@ -14,6 +17,7 @@ const $ = selector => document.querySelector(selector);
 const navigate = initNavigation();
 let mode = 'sample';
 let selectedService = 'spotify';
+const youtubeActivity = () => mode === 'csv' && records.some(record => record.origin === 'youtube-takeout');
 let manualService = 'spotify';
 let records = sampleRecords();
 let result = summarize(records);
@@ -22,6 +26,7 @@ let from = '', to = '';
 let importedNames = new Set();
 let occurrences = new Map();
 let duplicateCount = 0;
+let activityAudit = null;
 let importWorker;
 let pendingImport = null;
 let sessionBytes = 0;
@@ -43,10 +48,10 @@ let restoredSession = false;
 let restorationSource = '';
 let restoring = false;
 let fileReports = [];
-const explore = initExplore({ state: () => ({ mode, records, result, filters: { from, to }, duplicates: duplicateCount, files: fileReports, restored: restoredSession }), downloadCard });
+const explore = initExplore({ state: () => ({ mode, records, result, filters: { from, to }, duplicates: duplicateCount, files: fileReports, restored: restoredSession, activityAudit }), downloadCard });
 const csvGuide = createCSVGuide({ lock: active => { guideBusy = active; syncBusy(); }, externalBusy: () => importBusy, start: importFiles, notice: importNotice });
 const busyChanged = () => document.dispatchEvent(new Event('payola:busy'));
-function syncBusy() { busy = importBusy || guideBusy; busyChanged(); }
+function syncBusy() { busy = importBusy || guideBusy; if ($('#event-format')) $('#event-format').disabled = busy || csvGuide.pending; busyChanged(); }
 const backups = createPreservationTracker();
 const warnBeforeLeaving = event => { event.preventDefault(); event.returnValue = ''; };
 let leaveWarning = false;
@@ -116,11 +121,11 @@ function coverage() {
 }
 function render() {
   $('#import-entry-note').hidden = mode !== 'sample';
-  $('#view-badge').textContent = mode === 'sample' ? 'Fictional sample' : mode === 'routes' ? 'No history loaded' : mode === 'csv' ? 'CSV · unpriced' : mode === 'lastfm' ? 'Last.fm scrobbles' : mode === 'manual' ? 'Self-reported counts' : 'Imported history';
-  backups.observe([mode, selectedService, records, manual, from, to, duplicateCount, lastfmAttribution, lastfmLoaded], mode !== 'sample' && mode !== 'routes' && (mode === 'manual' ? Boolean(manual) : records.length > 0));
+  $('#view-badge').textContent = mode === 'sample' ? 'Fictional sample' : mode === 'routes' ? 'No history loaded' : mode === 'csv' ? youtubeActivity() ? 'Music-marked activity · unpriced' : 'CSV · unpriced' : mode === 'lastfm' ? 'Last.fm scrobbles' : mode === 'manual' ? 'Self-reported counts' : 'Imported history';
+  backups.observe([mode, selectedService, records, manual, from, to, duplicateCount, lastfmAttribution, lastfmLoaded, activityAudit], mode !== 'sample' && mode !== 'routes' && (mode === 'manual' ? Boolean(manual) : records.length > 0));
   renderPreservation();
   // Repainting (including a rejected restore) must not mark saved history dirty.
-  document.dispatchEvent(new CustomEvent('payola:view', { detail: [mode, selectedService, records, manual, from, to, duplicateCount, lastfmAttribution, lastfmLoaded] }));
+  document.dispatchEvent(new CustomEvent('payola:view', { detail: [mode, selectedService, records, manual, from, to, duplicateCount, lastfmAttribution, lastfmLoaded, activityAudit] }));
   result = mode === 'manual' ? manual || { plays: 0, amount: 0, ms: null, artists: [], audit: null } : summarize(records, { from, to });
   if (mode === 'lastfm') { result.ms = null; result.amount = null; }
   $('#stat-plays').textContent = number(result.plays);
@@ -177,23 +182,29 @@ function renderHistoryInfo() {
   $('#history-audit').textContent = routes ? 'Choose a supported route above to begin. No history is loaded.' : $('#audit').textContent;
   $('#history-warning').textContent = routes ? 'Selecting a streaming service does not declare or verify the source of any listening history.' : counts ? 'Counts are self-reported. No duration, date coverage, or stream eligibility checks are possible.' : last ? 'Only previously scrobbled activity is available. Completeness and service attribution are not verified. Filters do not change the original declaration period; comparisons outside it have no service confirmation or established coverage.' : mode === 'sample' ? 'Fictional demonstration data, not your listening history.' : 'File coverage is not guaranteed complete. Missing dates do not prove zero listening; qualifying playback duration does not verify royalties.';
   if (restoredSession) $('#history-warning').textContent += ` Restored from a user-editable ${restorationSource === 'cloud' ? 'cloud snapshot' : 'local session file'}; source and declarations are not authenticated. Any saved Last.fm dollar scenario was disabled; opt in again using the control below. Original import hashes/byte accounting were not restored; start a new import view to add files.`;
+  if (youtubeActivity()) {
+    $('#history-warning').textContent += ' Includes YouTube Music-marked activity, not a verified full listening history. General YouTube watch events excluded; exported channel names are not verified recording artists. Activity duration is unknown.';
+    $('#history-details').insertAdjacentHTML('beforeend', '<div><dt>Activity import</dt><dd>Includes limited music-marked Takeout events · channel attribution · unknown duration</dd></div>');
+    $('#history-details').insertAdjacentHTML('beforeend', `<div><dt>Activity input audit</dt><dd>${activityAudit ? esc(activityAuditText(activityAudit)) : 'Unavailable in this older backup. Exclusion counts were not preserved; zero exclusions must not be inferred.'}</dd></div>`);
+  }
   $('#restore-scenario').hidden = !restoredSession || mode !== 'lastfm' || !lastfmAttribution.confirmed || lastfmAttribution.service !== 'spotify' || scenarioActive();
 }
 function renderAttribution() {
   if (mode === 'csv') {
+    $('#receipt-type').textContent = youtubeActivity() ? 'MUSIC-MARKED ACTIVITY' : 'USER-PROVIDED CSV';
     $('#receipt .receipt-source > span:first-child').textContent = SERVICES[selectedService];
     $('#receipt .receipt-amount-label').textContent = 'User-provided listening events';
     $('#receipt-total').textContent = number(result.plays);
-    $('#receipt .currency-label').textContent = 'UNVERIFIED CSV · UNPRICED';
-    $('#source-label').textContent = `${SERVICES[selectedService]} · USER-PROVIDED CSV`;
-    $('#receipt .receipt-disclaimer').textContent = 'Unverified listening events. No royalty estimate. Missing duration stays unknown.';
+    $('#receipt .currency-label').textContent = youtubeActivity() ? 'MUSIC-MARKED ACTIVITY · UNPRICED' : 'UNVERIFIED CSV · UNPRICED';
+    $('#source-label').textContent = `${SERVICES[selectedService]} · ${youtubeActivity() ? 'MUSIC-MARKED ACTIVITY' : 'USER-PROVIDED CSV'}`;
+    $('#receipt .receipt-disclaimer').textContent = youtubeActivity() ? YOUTUBE_ACTIVITY_DISCLOSURE : 'Unverified listening events. No royalty estimate. Missing duration stays unknown.';
     $('#receipt').querySelectorAll('.receipt-line').forEach((line, i) => { if (i) line.hidden = true; });
     $('.assumptions-card').hidden = true;
     $('#calculation-formula').textContent = 'CSV listening events are always unpriced. No royalty estimate.';
     $('.amount-head').textContent = 'UNPRICED';
     $('#artist-rows').querySelectorAll('tr').forEach(row => { if (row.cells.length === 4) row.cells[3].textContent = '—'; });
     $('.table-footer > span:last-child').textContent = 'User-provided events · no royalty estimate';
-    $('#data-note').textContent = 'CSV service is self-reported. Playlists and general watch activity are not listening history. Unknown duration is never inferred; known plays under 30 seconds are excluded.';
+    $('#data-note').textContent = youtubeActivity() ? 'Includes explicitly music-marked activity only. General YouTube watch history is excluded; exported channel names are not verified artists. Activity duration is unknown; no royalties are inferred.' : 'CSV service is self-reported. Playlists and general watch activity are not listening history. Unknown duration is never inferred; known plays under 30 seconds are excluded.';
     $('#stat-plays').nextElementSibling.textContent = 'User-provided events; unknown durations retained';
     if (result.ms === null) $('#hours-note').textContent = 'Unknown: some events have no duration';
     return;
@@ -321,9 +332,9 @@ function renderRows() {
   }
 }
 function csvImportPanel() {
-  return `<section class="input-card"><h3>Import your own CSV listening events</h3><p>One row per actual music listen—not playlists, liked songs, or general watch activity. Service is self-reported; all CSV history is unpriced. Native Apple privacy and YouTube Takeout exports are not yet supported.</p><p>Map exact header names below. Dates must be YYYY-MM-DD (UTC). Duration is actual milliseconds played, not track length. Leave its mapping blank if unknown. Files in one selection must share headers.</p><details><summary>Synthetic CSV example</summary><pre>date,artist,track,ms_played
+  return `<section class="input-card"><h3>Import your ${esc(SERVICES[selectedService])} listening events</h3><p>One row per actual music listen—not playlists, liked songs, purchases, daily totals, or general watch activity. Service is self-reported; all mapped event history is unpriced.</p>${selectedService === 'youtube' ? '<label>File format<select id="event-format"><option value="csv">Mapped CSV listening events</option><option value="youtube">YouTube Music-marked activity JSON / ZIP (limited)</option></select></label><p id="youtube-import-note" hidden>Only explicit YouTube Music-marked listen/watch actions are accepted. General watch history, search, ads, missing channel metadata and unsupported localized actions are excluded. Channel names are not verified recording artists. Duration stays unknown. JSON only; unzip unsupported archives first. Review exclusions before confirming.</p>' : ''}<div id="mapped-csv-fields"><p>Map exact header names below. Dates must be YYYY-MM-DD or ISO timestamps with an explicit UTC/offset. Duration is actual time played, not track length. Choose its unit or leave the duration mapping blank if unknown. Files in one selection must share headers.</p><details><summary>Synthetic CSV example</summary><pre>date,artist,track,ms_played
 2026-01-01,Example Artist,Example Song,60000
-2026-01-02,Example Artist,Another Song,</pre></details><div class="csv-mapping">${[['date', 'Date', 'date'], ['artist', 'Artist', 'artist'], ['track', 'Track title', 'track'], ['ms', 'Milliseconds played (optional)', 'ms_played']].map(([key, label, value]) => `<label>${label}<input data-csv-map id="csv-${key}" value="${value}" maxlength="500"></label>`).join('')}</div><label class="file-zone" id="drop-zone">Choose CSV files<input id="history-files" type="file" accept=".csv,text/csv" multiple><small>100 MB per selection; 200,000 retained records. Normalized history must fit a 25 MB full-session backup. Review before confirming.</small></label><progress id="import-progress" max="1" value="0" aria-label="Import progress" hidden></progress><div id="import-feedback" class="import-feedback" role="status" aria-live="polite"></div><section id="import-summary" hidden></section></section>`;
+2026-01-02,Example Artist,Another Song,</pre></details><div class="csv-mapping">${[['date', 'Date / timestamp', 'date'], ['artist', 'Artist', 'artist'], ['track', 'Track title', 'track'], ['ms', 'Actual time played (optional)', 'ms_played']].map(([key, label, value]) => `<label>${label}<input data-csv-map id="csv-${key}" value="${value}" maxlength="500"></label>`).join('')}<label>Duration unit<select data-csv-map id="csv-duration-unit"><option value="ms">Milliseconds played</option><option value="seconds">Seconds played</option></select></label></div></div><label class="file-zone" id="drop-zone"><span id="event-file-label">Choose CSV files</span><input id="history-files" type="file" accept=".csv,text/csv" multiple><small>100 MB per selection; 200,000 retained records. Normalized history must fit a 25 MB full-session backup. Review before confirming.</small></label><progress id="import-progress" max="1" value="0" aria-label="Import progress" hidden></progress><div id="import-feedback" class="import-feedback" role="status" aria-live="polite"></div><section id="import-summary" hidden></section></section>`;
 }
 function manualRow(name = '', plays = '', removable = true) {
   return `<div class="manual-row"><label>Artist name<input name="artist" value="${esc(name)}" required maxlength="100"></label><label>Self-reported plays<input name="plays" type="number" min="1" max="10000000" step="1" value="${esc(plays)}" required></label>${removable ? '<button type="button" data-remove-manual class="text-button">Remove artist</button>' : ''}</div>`;
@@ -331,7 +342,14 @@ function manualRow(name = '', plays = '', removable = true) {
 function syncService() {
   $('#service-picker').value = selectedService;
   $('[data-mode="import"]').hidden = selectedService !== 'spotify';
-  $('#service-help').textContent = 'Last.fm is optional. Manual counts and mapped CSV events are available. ' + (selectedService === 'spotify' ? 'Spotify Extended History JSON/ZIP imports are supported.' : 'CSV is unpriced and user-provided, not native Apple privacy or YouTube Takeout compatibility.');
+  const guide = serviceGuide(selectedService);
+  $('#service-help').textContent = `${SERVICES[selectedService]} · ${guide.status}. Last.fm is optional and only contains activity already scrobbled.`;
+  $('[data-mode="csv"] span').textContent = selectedService === 'youtube' ? 'CSV / activity · unpriced' : 'CSV history · unpriced';
+  $('#service-guide-title').textContent = `Bring your ${SERVICES[selectedService]} listening`;
+  $('#service-guide-status').textContent = guide.status;
+  $('#service-guide-copy').textContent = guide.steps;
+  const link = $('#service-guide-link'); link.hidden = !guide.url;
+  if (guide.url) { link.href = guide.url; link.textContent = `${guide.link} ↗`; } else link.removeAttribute('href');
   renderAvailability();
 }
 function confirmDiscard() {
@@ -351,7 +369,7 @@ function setMode(next) {
   if (next === 'sample') selectedService = 'spotify';
   syncService();
   restoredSession = false;
-  csvGuide.cancel(); fileReports = [];
+  csvGuide.cancel(); fileReports = []; activityAudit = null;
   lastfmController?.abort(); lastfmController = null; lastfmLoaded = null; lastfmAttribution = attribution();
   stopImport();
   manualService = selectedService;
@@ -364,7 +382,7 @@ function setMode(next) {
   records = next === 'sample' ? sampleRecords() : []; manual = null; importedNames.clear(); occurrences.clear(); duplicateCount = 0; sessionBytes = 0;
   document.querySelectorAll('.tab').forEach(tab => { tab.classList.toggle('active', tab.dataset.mode === next); tab.setAttribute('aria-pressed', String(tab.dataset.mode === next)); });
   const panel = $('#input-panel'); panel.hidden = next === 'sample';
-  if (next === 'routes') panel.innerHTML = `<section class="input-card"><h3>Choose how to add your ${SERVICES[selectedService]} listening.</h3><p>Use the routes above. Last.fm is recommended only if you already scrobble; it is not required. Manual counts are always available.${selectedService === 'spotify' ? ' Spotify JSON/ZIP imports are also supported.' : ' Mapped CSV listening history is supported and unpriced. Native privacy/Takeout exports and a validated royalty benchmark are not supported for this service.'}${selectedService === 'apple' ? ' The optional Apple Music preview shows recent resources, not play counts.' : ''}</p></section>`;
+  if (next === 'routes') panel.innerHTML = `<section class="input-card"><h3>Choose how to add your ${SERVICES[selectedService]} listening.</h3><p>See the service guide above, then choose a route. Mapped event CSV and manual counts work for all seven services. ${selectedService === 'youtube' ? 'The event import route also accepts a limited subset of YouTube Music-marked activity JSON/ZIP.' : ''} Non-Spotify views have no validated royalty benchmark. Last.fm is useful only if you already scrobble; it is not required.</p></section>`;
   else if (next === 'manual') panel.innerHTML = `<section class="input-card"><h3>Put a number on your repeat button.</h3><p>No files needed. Enter an artist and your ${SERVICES[selectedService]} play count. Counts are self-reported; non-Spotify counts are unpriced.</p><form id="manual-form"><label>Artist name<input name="artist" placeholder="Your favorite artist" required maxlength="100"></label><label>${SERVICES[selectedService]} plays<input name="plays" type="number" min="1" max="10000000" step="1" placeholder="e.g. 500" required></label><button class="button" type="submit">Make my receipt ↗</button></form></section>`;
   else if (next === 'import') panel.innerHTML = `<section class="input-card"><h3>Bring your history. Keep it private.</h3><ol class="import-steps"><li><strong>Request your history</strong><p>In <a href="https://www.spotify.com/account/privacy/" target="_blank" rel="noreferrer">Spotify privacy settings ↗</a>, request Extended Streaming History, not the standard account-history package.</p></li><li><strong>Download your export</strong><p>When it is ready, save the ZIP archive. Already unzipped? Choose audio-history JSON files instead.</p></li><li><strong>Open it here</strong><p>We read the files on your device. No account connection or upload required.</p></li></ol><label class="file-zone" id="drop-zone">↥ &nbsp; Drop a ZIP or JSON files here, or choose files<input id="history-files" type="file" accept=".zip,.json,application/json,application/zip" multiple><small>100 MB input / expanded JSON per selection. Session caps: 100 MB input history, 200,000 retained records, and normalized history small enough for a 25 MB full-session backup. Cancel discards the entire pending selection. Unsupported ZIPs can be unzipped first.</small></label><progress id="import-progress" max="1" value="0" aria-label="Import progress" hidden></progress><div id="import-feedback" class="import-feedback" role="status" aria-live="polite"></div><section id="import-summary" hidden></section></section>`;
   else if (next === 'csv') panel.innerHTML = csvImportPanel();
@@ -375,7 +393,7 @@ function setMode(next) {
     panel.innerHTML = `<section class="input-card"><h3>Your scrobbles. No downloads.</h3><p>Load public recorded listening from Last.fm. No password or account authorization. Only previously scrobbled activity is available—not your entire streaming history. Actual duration is unknown. Declare a service below; only explicitly confirmed Spotify histories may opt into a hypothetical historical benchmark scenario.</p><p>Your username and dates go through this server to Last.fm. History stays in this tab, without server persistence. Hosting infrastructure may log requests. Loading or refreshing replaces the current Last.fm view only after success.</p><form id="lastfm-form"><label>Last.fm username<input name="user" id="lastfm-user" maxlength="50" required pattern="[a-zA-Z0-9_-]+" value="${esc(rememberedUser)}" autocomplete="off"></label><label>From (UTC)<input name="from" type="date" min="1970-01-01" value="${month}" required></label><label>To (UTC)<input name="to" type="date" min="1970-01-01" value="${today}" required></label><label>Streaming service<select name="service" id="lastfm-service">${Object.entries(SERVICES).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select></label><label class="remember-label"><input id="lastfm-confirm" type="checkbox"> All scrobbles in the requested period came from this service (self-reported)</label><label class="remember-label"><input id="lastfm-scenario" type="checkbox" disabled> Optional Spotify historical benchmark scenario—not verified earnings</label><label class="remember-label"><input id="remember-lastfm" type="checkbox" ${rememberedUser ? 'checked' : ''}> Remember username on this device</label><button class="button" type="submit">Load / refresh listening ↻</button><button class="text-button" type="button" id="forget-lastfm">Forget saved username</button><button class="text-button" type="button" id="cancel-lastfm" hidden>Cancel loading</button></form><progress id="lastfm-progress" max="1" value="0" aria-label="Last.fm loading progress" hidden></progress><p id="lastfm-status" role="status" aria-live="polite">Select a range of up to 100 pages (about 20,000 scrobbles). Refresh is manual, not continuous syncing.</p><a id="lastfm-credit" href="https://www.last.fm/" target="_blank" rel="noreferrer">Listening data from Last.fm ↗</a></section>`;
   } else panel.innerHTML = '';
   if (['import', 'csv'].includes(next)) $('#history-files').closest('label').insertAdjacentHTML('beforebegin', '<label>Import action<select id="import-action"><option value="add">Add to current history</option><option value="replace">Replace current history after confirmation</option></select></label>');
-  if (next === 'csv') csvGuide.mount();
+  if (next === 'csv') { csvGuide.mount(); $('#mapped-csv-fields').append($('#csv-headers'), $('#csv-guided').closest('label'), $('#csv-guide')); }
   if (next === 'manual') {
     const form = $('#manual-form');
     const fields = document.createElement('div'); fields.id = 'manual-rows';
@@ -464,12 +482,21 @@ async function fetchScrobbles(form) {
   }
 }
 $('#input-panel').addEventListener('change', event => {
+  if (event.target.id === 'event-format') {
+    if (busy || csvGuide.pending || restoring) return;
+    csvGuide.cancel();
+    const activity = event.target.value === 'youtube';
+    $('#mapped-csv-fields').hidden = activity; $('#youtube-import-note').hidden = !activity;
+    $('#history-files').accept = activity ? '.json,.zip,application/json,application/zip' : '.csv,text/csv';
+    $('#event-file-label').textContent = activity ? 'Choose YouTube activity JSON / ZIP' : 'Choose CSV files';
+    $('#history-files').value = ''; return;
+  }
   if (event.target.id !== 'history-files') return;
   chooseFiles([...event.target.files]);
 });
 function chooseFiles(files) {
   if (busy || restoring || !files.length) return;
-  if (mode === 'csv' && $('#csv-guided')?.checked && !restoredSession) csvGuide.select(files);
+  if (mode === 'csv' && $('#event-format')?.value !== 'youtube' && $('#csv-guided')?.checked && !restoredSession) csvGuide.select(files);
   else importFiles(files);
 }
 for (const type of ['dragover', 'dragleave', 'drop']) $('#input-panel').addEventListener(type, event => {
@@ -481,6 +508,7 @@ function stopImport() {
   importWorker?.terminate(); importWorker = null; pendingImport = null; importBusy = false;
   $('#import-review')?.remove();
   if ($('#import-action')) $('#import-action').disabled = false;
+  if ($('#event-format')) $('#event-format').disabled = false;
   document.querySelectorAll('[data-csv-map]').forEach(input => { input.disabled = false; });
   if ($('#csv-guided')) $('#csv-guided').disabled = false;
   syncBusy();
@@ -500,6 +528,7 @@ function importFiles(files) {
   $('#cancel-import')?.remove(); feedback.before(cancel);
   cancel.addEventListener('click', () => { stopImport(); feedback.textContent = 'Import cancelled. The whole current selection was discarded; previously imported history is unchanged.'; });
   importBusy = true; busy = true; input.disabled = true;
+  if ($('#event-format')) $('#event-format').disabled = true;
   if ($('#csv-guided')) $('#csv-guided').disabled = true;
   $('#import-action').disabled = true;
   document.querySelectorAll('[data-csv-map]').forEach(input => { input.disabled = true; });
@@ -524,7 +553,7 @@ function importFiles(files) {
       $('#confirm-import').addEventListener('click', () => {
         if (pendingImport !== imported) return;
         records = imported.records; importedNames = imported.hashes; occurrences = imported.occurrences;
-        sessionBytes = imported.bytes; duplicateCount = imported.duplicates;
+        sessionBytes = imported.bytes; duplicateCount = imported.duplicates; activityAudit = imported.activityAudit || null;
         fileReports = [...(replace ? [] : fileReports), ...imported.previews].slice(-500);
         if (replace) { from = ''; to = ''; $('#from-date').value = ''; $('#to-date').value = ''; }
         stopImport(); render();
@@ -535,8 +564,8 @@ function importFiles(files) {
         $('#import-download-session').addEventListener('click', () => $('#save-session').click());
       });
     };
-    const mapping = mode === 'csv' ? Object.fromEntries(['date', 'artist', 'track', 'ms'].map(key => [key, $(`#csv-${key}`).value.trim()])) : undefined;
-    worker.postMessage({ files, state: { records: replace ? [] : records, hashes: replace ? new Set() : importedNames, occurrences: replace ? new Map() : occurrences, bytes: replace ? 0 : sessionBytes, duplicates: replace ? 0 : duplicateCount, csv: mode === 'csv', mapping } });
+    const mapping = mode === 'csv' ? { ...Object.fromEntries(['date', 'artist', 'track', 'ms'].map(key => [key, $(`#csv-${key}`).value.trim()])), durationUnit: $('#csv-duration-unit').value } : undefined;
+    worker.postMessage({ files, state: { records: replace ? [] : records, hashes: replace ? new Set() : importedNames, occurrences: replace ? new Map() : occurrences, bytes: replace ? 0 : sessionBytes, duplicates: replace ? 0 : duplicateCount, activityAudit: replace ? null : activityAudit, csv: mode === 'csv', mapping, service: selectedService, format: $('#event-format')?.value || 'csv' } });
   } catch (error) { stopImport(); feedback.textContent = `Could not start background import: ${error.message}`; }
 }
 function applyRange(range) {
@@ -565,7 +594,7 @@ function renderComparison() {
 }
 $('#export-csv').addEventListener('click', () => {
   const range = bounds(records);
-  const csv = summaryCSV(result, { sourceType: mode, source: (mode === 'lastfm' ? 'Last.fm recorded scrobbles' : mode === 'sample' ? 'Fictional sample' : mode === 'manual' ? `Self-reported ${SERVICES[manualService]}` : mode === 'csv' ? `User-provided CSV history · ${SERVICES[selectedService]} self-reported` : 'Local Spotify import') + (restoredSession ? ' · restored user-editable session; provenance not authenticated' : ''), from: mode === 'manual' ? '' : from || range.from, to: mode === 'manual' ? '' : to || range.to, duplicates: duplicateCount, attribution: mode === 'lastfm' ? lastfmAttribution : null });
+  const csv = summaryCSV(result, { sourceType: mode, youtubeActivity: youtubeActivity(), activityAudit, source: (mode === 'lastfm' ? 'Last.fm recorded scrobbles' : mode === 'sample' ? 'Fictional sample' : mode === 'manual' ? `Self-reported ${SERVICES[manualService]}` : mode === 'csv' ? `User-provided events · ${SERVICES[selectedService]} self-reported${youtubeActivity() ? ' · includes music-marked Takeout activity; channel names are not verified artists; duration unknown for activity' : ''}` : 'Local Spotify import') + (restoredSession ? ' · restored user-editable session; provenance not authenticated' : ''), from: mode === 'manual' ? '' : from || range.from, to: mode === 'manual' ? '' : to || range.to, duplicates: duplicateCount, attribution: mode === 'lastfm' ? lastfmAttribution : null });
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = `payola-reciept-summary-${mode}.csv`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000); notify('CSV downloaded with artist totals, source, dates, exclusions, and benchmark assumptions.');
@@ -584,6 +613,9 @@ $('#reset-dates').addEventListener('click', () => applyRange({ from: '', to: '' 
 $('#artist-rows').addEventListener('click', event => {
   const button = event.target.closest('[data-artist]'); if (!button) return;
   const a = result.artists[Number(button.dataset.artist)]; if (!a) return;
+  // Safari does not focus clicked buttons by default. Establish the opener before
+  // showModal so native dialog dismissal can restore keyboard focus consistently.
+  button.focus({ preventScroll: true });
   selectedArtist = a;
   const tracks = [...a.tracks.entries()].sort((a, b) => b[1] - a[1]);
   $('#artist-detail').innerHTML = `<h2 id="artist-dialog-heading">${esc(a.name)}</h2><div class="detail-total">${money(a.plays * RATE)}</div><p class="detail-meta">Estimated recording royalties · ${number(a.plays)} plays${a.ms === null ? '' : ` · ${(a.ms / 3600000).toFixed(1)} hours`}<br>${esc(coverage())}${mode === 'sample' ? '<br>Fictional sample artist and listening data.' : ''}</p><p class="detail-meta">Historical benchmark, not confirmed earnings or artist take-home.</p>${tracks.length ? `<ul class="track-list">${tracks.slice(0, 50).map(([name, plays]) => `<li><span>${esc(name)}</span><span>${number(plays)} plays</span></li>`).join('')}</ul>${tracks.length > 50 ? '<p class="detail-meta">Top 50 tracks shown.</p>' : ''}` : '<p class="detail-meta">Track details are unavailable for manual counts.</p>'}`;
@@ -605,7 +637,7 @@ $('#artist-rows').addEventListener('click', event => {
   }
   if (mode === 'csv') {
     $('#artist-detail .detail-total').textContent = `${number(a.plays)} events`;
-    $('#artist-detail .detail-meta').textContent = `User-provided CSV · ${SERVICES[selectedService]} self-reported · ${a.ms === null ? 'duration unknown' : (a.ms / 3600000).toFixed(1) + ' hours'}`;
+    $('#artist-detail .detail-meta').textContent = `User-provided events · ${SERVICES[selectedService]} self-reported${youtubeActivity() ? ' · includes exported channel names, not verified artists' : ''} · ${a.ms === null ? 'duration unknown' : (a.ms / 3600000).toFixed(1) + ' hours'}`;
     $('#artist-detail').querySelectorAll('.detail-meta')[1].textContent = 'Unverified listening events. No royalty estimate.';
     $('#artist-card-style option[value=value]').remove();
   }
@@ -633,6 +665,7 @@ async function downloadCard(artist = null, style = 'value', preview = false) {
   const isCurrentPreview = preview ? explore.beginPreview() : null;
   // Capture the selection before asynchronous image generation.
   const source = mode;
+  const activityLines = youtubeActivity() ? [...YOUTUBE_ACTIVITY_DISCLOSURE_LINES] : null;
   const plays = artist ? artist.plays : result.plays;
   const duration = artist ? artist.ms : result.ms;
   const hoursMetric = $('#receipt-metric').value === 'hours' && duration !== null;
@@ -652,7 +685,7 @@ async function downloadCard(artist = null, style = 'value', preview = false) {
   text('YOUR PAYOLA RECIEPT', 135, 135, '22px monospace');
   if (restoredSession) text('RESTORED SESSION · PROVENANCE NOT AUTHENTICATED', 135, 170, '15px Arial');
   text(artist ? 'Your artist.' : 'Good music.', 135, 242, '72px Georgia'); text(artist ? artist.name : 'Real impact.', 135, 322, artist ? '54px Georgia' : '72px Georgia'); line(365);
-  text(mode === 'lastfm' ? 'LAST.FM · RECORDED SCROBBLES' : mode === 'sample' ? 'SPOTIFY · FICTIONAL SAMPLE' : mode === 'manual' ? `${SERVICES[manualService]} · SELF-REPORTED PLAYS` : mode === 'csv' ? `${SERVICES[selectedService]} · CSV · UNPRICED` : 'SPOTIFY · IMPORTED HISTORY', 135, 415, '19px monospace');
+  text(mode === 'lastfm' ? 'LAST.FM · RECORDED SCROBBLES' : mode === 'sample' ? 'SPOTIFY · FICTIONAL SAMPLE' : mode === 'manual' ? `${SERVICES[manualService]} · SELF-REPORTED PLAYS` : mode === 'csv' ? `${SERVICES[selectedService]} · ${youtubeActivity() ? 'MUSIC ACTIVITY' : 'CSV'} · UNPRICED` : 'SPOTIFY · IMPORTED HISTORY', 135, 415, '19px monospace');
   text(coverage(), 135, 453, '18px monospace');
   if (mode === 'lastfm') {
     text(lastfmAttribution.confirmed ? `${lastfmAttribution.label} · self-reported${scenarioActive() ? ' · hypothetical scenario' : ' · unpriced'}` : 'Mixed / unknown services · unpriced', 135, 482, '16px Arial');
@@ -670,6 +703,8 @@ async function downloadCard(artist = null, style = 'value', preview = false) {
     text('Historical benchmark: Duetti, 2024 Spotify sample.', 135, 1060 + extraHeight, '20px Arial');
     text('Not a fixed rate or confirmed artist take-home.', 135, 1100 + extraHeight, '23px Arial');
     text('Plan, country, contracts, eligibility not adjusted.', 135, 1140 + extraHeight, '20px Arial');
+  } else if (activityLines) {
+    activityLines.forEach((value, index) => text(value, 135, 1060 + extraHeight + index * 34, '19px Arial'));
   } else { text('Your listening, not a royalty or payout statement.', 135, 1070 + extraHeight, '23px Arial'); text(mode === 'lastfm' ? 'Data from Last.fm. Duration and eligibility unknown.' : 'Only included plays from the selected source.', 135, 1110 + extraHeight, '21px Arial'); }
   text('THANK YOU FOR LISTENING', 135, 1240 + extraHeight, '23px monospace'); text('Payola Reciept', 135, 1285 + extraHeight, '20px Arial');
   const logo = await loadCardLogo();
@@ -686,6 +721,7 @@ function captureSession() {
   if (busy || csvGuide.pending || lastfmController || restoring || mode === 'routes') throw new Error('Finish pending work and load history before saving.');
   if (mode === 'manual' ? !manual : !records.length) throw new Error('Add listening history before saving.');
   return sessionText({ mode, selectedService: mode === 'sample' ? 'spotify' : selectedService, records, filters: { from, to }, duplicates: duplicateCount,
+    ...(activityAudit ? { activityAudit } : {}),
     attribution: mode === 'lastfm' ? lastfmAttribution : null,
     lastfm: mode === 'lastfm' ? { skipped: lastfmLoaded?.skipped || 0, duplicates: lastfmLoaded?.duplicates || 0 } : null,
     manual: mode === 'manual' && manual ? manual.artists.length === 1 ? { artist: manual.artists[0].name, plays: manual.plays } : { artists: manual.artists.map(a => ({ artist: a.name, plays: a.plays })) } : null });
@@ -695,6 +731,7 @@ function applySession(restored, cloud = false) {
   setMode(restored.mode);
   records = restored.records; manual = restored.manual; manualService = selectedService;
   from = restored.filters.from; to = restored.filters.to; duplicateCount = restored.duplicates;
+  activityAudit = restored.activityAudit || null;
   lastfmAttribution = restored.attribution; lastfmLoaded = restored.lastfm;
   $('#from-date').value = from; $('#to-date').value = to;
   if (mode === 'manual' && manual) {
@@ -756,7 +793,7 @@ initAccounts({ capture: captureSession, preservation, navigate,
     const text = selector => $(selector).textContent.trim();
     return {
       title: mode === 'sample' ? 'Fictional sample receipt' : 'My rotation receipt', note: '', theme: 'paper',
-      source: `${text('#receipt .receipt-source > span:first-child')} · ${mode === 'csv' ? 'USER-PROVIDED CSV' : mode === 'lastfm' ? 'LAST.FM SCROBBLES' : text('#receipt-type')}`,
+      source: `${text('#receipt .receipt-source > span:first-child')} · ${mode === 'csv' ? youtubeActivity() ? 'MUSIC-MARKED ACTIVITY' : 'USER-PROVIDED CSV' : mode === 'lastfm' ? 'LAST.FM SCROBBLES' : text('#receipt-type')}`,
       period: text('#receipt-period'), amount: text('#receipt-total'), label: text('#receipt .receipt-amount-label'),
       plays: text('#receipt-plays'), highlights: result.artists.slice(0, 3).map(artist => `${artist.name}: ${number(artist.plays)} plays`).join(' · '),
       disclosure: `${text('#receipt .currency-label')}. ${text('#receipt .receipt-disclaimer')} ${text('#history-warning')} Saved summary only, not a full-history backup.`
@@ -786,5 +823,6 @@ $('#service-picker').addEventListener('change', () => {
   selectedService = nextService;
   setMode('routes');
 });
-// Seed the account revision tracker with the initial session identity.
+// Seed the service guide and account revision tracker without network connections.
+syncService();
 render();

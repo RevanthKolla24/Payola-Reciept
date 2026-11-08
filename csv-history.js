@@ -1,4 +1,16 @@
-import { validListeningRecord, validRecordDate } from './lib.js';
+import { validListeningRecord, validRecordDate, validTimestamp } from './lib.js';
+
+// Dates are UTC calendar days or explicit-offset ISO timestamps, never locale guesses.
+export function eventTime(value) {
+  if (validRecordDate(value)) return { date: value };
+  const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!parts || !validRecordDate(parts[1]) || Number(parts[2]) > 23 || Number(parts[3]) > 59 || Number(parts[4]) > 59 || (parts[5] !== 'Z' && (Number(parts[6]) > 23 || Number(parts[7]) > 59))) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  const date = new Date(timestamp).toISOString().slice(0, 10);
+  const normalized = new Date(timestamp).toISOString();
+  return validTimestamp(normalized, date) ? { date, timestamp: normalized } : null;
+}
 
 // User-mapped listening events, not native Apple/YouTube export compatibility.
 export function csvRows(text) {
@@ -29,6 +41,7 @@ export function csvRows(text) {
 }
 
 export function normalizeCSV(text, mapping = { date: 'date', artist: 'artist', track: 'track', ms: 'ms_played' }) {
+  if (mapping.durationUnit !== undefined && !['ms', 'seconds'].includes(mapping.durationUnit)) throw new Error('Choose milliseconds or seconds for actual time played.');
   const { headers, rows } = csvRows(text);
   const indices = Object.fromEntries(['date', 'artist', 'track', 'ms'].map(key => [key, headers.indexOf(mapping[key])]));
   if (['date', 'artist', 'track'].some(key => indices[key] < 0)) throw new Error('Map date, artist and track to existing CSV headers.');
@@ -36,11 +49,11 @@ export function normalizeCSV(text, mapping = { date: 'date', artist: 'artist', t
   const selected = Object.values(indices).filter(index => index >= 0);
   if (new Set(selected).size !== selected.length) throw new Error('Map each field to a different column.');
   return rows.map(values => {
-    const date = values[indices.date].trim(), artist = values[indices.artist].trim(), track = values[indices.track].trim();
+    const time = eventTime(values[indices.date].trim()), artist = values[indices.artist].trim(), track = values[indices.track].trim();
     const duration = indices.ms < 0 ? '' : values[indices.ms].trim();
-    const ms = duration === '' ? null : /^\d+(\.\d+)?$/.test(duration) ? Number(duration) : NaN;
-    const record = { source: 'csv', date, artist, track, ms, supported: true };
-    record.eventKey = JSON.stringify(['csv', date, artist, track, ms]);
-    return validRecordDate(date) && validListeningRecord(record) ? record : { invalid: true };
+    const ms = duration === '' ? null : /^\d+(\.\d+)?$/.test(duration) ? Number(duration) * (mapping.durationUnit === 'seconds' ? 1000 : 1) : NaN;
+    const record = { source: 'csv', ...time, artist, track, ms, supported: true };
+    record.eventKey = JSON.stringify(['csv', time?.timestamp || time?.date, artist, track, ms]);
+    return time && validListeningRecord(record) ? record : { invalid: true };
   });
 }
