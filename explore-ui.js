@@ -46,7 +46,8 @@ export function initExplore({ state, downloadCard }) {
       if (token !== comparisonGeneration) return;
       comparison = compareSessions(...sessions);
       const describe = (s, label) => `<p><strong>${label}: ${esc(SERVICES[s.service])} · ${esc(s.mode)}</strong><br>${number(s.plays)} included · ${s.hours === null ? 'Duration unknown' : `${s.hours.toFixed(1)} hours`} · ${number(s.artists)} artists<br>Observed: ${esc(s.observed.from || 'unavailable')} – ${esc(s.observed.to || 'unavailable')}<br>Filters: ${esc(s.filters.from || 'open start')} – ${esc(s.filters.to || 'open end')}${s.declaration ? `<br>Last.fm declaration: ${esc(s.declaration.service)} · ${s.declaration.confirmed ? 'self-reported confirmed' : 'unconfirmed'} · ${esc(s.declaration.from)} – ${esc(s.declaration.to)}` : ''}</p>`;
-      $('#session-comparison').innerHTML = `${describe(comparison.left, 'A')}${describe(comparison.right, 'B')}<p>${number(comparison.sharedArtists)} shared artists · ${number(comparison.sharedTracks)} exact artist/title pairs. Names are matched exactly, not resolved across services. Zero plays in a period do not prove no listening.</p><ul>${comparison.changes.slice(0, 20).map(a => `<li>${esc(a.name)}: ${number(a.before)} → ${number(a.after)} · ${a.delta.toFixed(1)} percentage-point share change</li>`).join('')}</ul>`;
+      const provenance = s => `<p>${esc(s.disclosure)}</p>${s.activityAudit ? `<p>${esc(activityAuditText(s.activityAudit))}</p>` : ''}`;
+      $('#session-comparison').innerHTML = `${describe(comparison.left, 'A')}${provenance(comparison.left)}${describe(comparison.right, 'B')}${provenance(comparison.right)}<p>${number(comparison.sharedArtists)} shared artists · ${number(comparison.sharedTracks)} exact artist/title pairs. Names are matched exactly, not resolved across services. Zero plays in a period do not prove no listening.</p><ul>${comparison.changes.slice(0, 20).map(a => `<li>${esc(a.name)}: ${number(a.before)} → ${number(a.after)} · ${a.delta.toFixed(1)} percentage-point share change</li>`).join('')}</ul>`;
       $('#download-comparison').hidden = false;
     } catch (error) { if (token === comparisonGeneration) $('#session-comparison').textContent = `${error.message} Open history is unchanged.`; }
     finally { if (token === comparisonGeneration) { comparing = false; $('#compare-sessions').disabled = false; } }
@@ -56,10 +57,14 @@ export function initExplore({ state, downloadCard }) {
   });
   $('#download-diagnostics').addEventListener('click', () => {
     const s = state();
+    if (s.mode === 'manual') return;
     if (window.confirm('Download counts and date coverage? No filenames, artist/track names or raw listening records are included.')) downloadText(JSON.stringify(safeDiagnostics(qualityReport(s.records, s.filters, s.duplicates), s.files, s.activityAudit), null, 2), 'payola-diagnostics.json');
   });
   $('#download-recap').addEventListener('click', () => downloadCard(null, 'listening'));
-  $('#preview-receipt').addEventListener('click', () => downloadCard(null, $('#receipt-style').value, true));
+  $('#preview-receipt').addEventListener('click', event => {
+    event.currentTarget.focus({ preventScroll: true });
+    downloadCard(null, $('#receipt-style').value, true);
+  });
   $('#close-receipt-preview').addEventListener('click', () => $('#receipt-preview-dialog').close());
   let previewURL, previewGeneration = 0;
   function invalidatePreview() {
@@ -93,6 +98,8 @@ export function initExplore({ state, downloadCard }) {
     },
     render() {
       const s = state(), r = recap(s.result), q = qualityReport(s.records, s.filters, s.duplicates);
+      $('#download-diagnostics').disabled = s.mode === 'manual';
+      $('#download-diagnostics').textContent = s.mode === 'manual' ? 'Record diagnostics unavailable for manual counts' : 'Download metadata-free diagnostics ↓';
       const comparison = s.mode === 'manual' ? null : comparePeriods(s.records, s.filters);
       $('#personal-recap').innerHTML = `<p><strong>${number(r.plays)} ${s.mode === 'lastfm' ? 'scrobbles' : s.mode === 'manual' ? 'self-reported plays' : 'included events'}</strong> · ${r.hours === null ? 'Duration unknown' : `${r.hours.toFixed(1)} hours`} · ${number(r.artists)} artists</p><p>Top artist concentration: ${r.concentration === null ? 'unavailable' : `${r.concentration.toFixed(1)}% across the top ${Math.min(5, r.artists)} artists`}.</p><ol>${r.topArtists.map(a => `<li>${esc(a.name)} · ${number(a.plays)}</li>`).join('')}</ol><details><summary>Top tracks</summary><ol>${r.topTracks.map(t => `<li>${esc(t.artist)} — ${esc(t.title)} · ${number(t.plays)}</li>`).join('') || '<li>No track details available.</li>'}</ol></details><p>${comparison ? `Previous equal-length period: ${esc(comparison.previous.from)} – ${esc(comparison.previous.to)} · ${number(comparison.prior.plays)} included. ${comparison.outsideCoverage ? 'Period extends outside observed dates. ' : ''}` : 'No dated comparison available. '}Coverage is not guaranteed complete; missing dates do not establish zero listening. This recap is unpriced.${s.mode === 'sample' ? ' Fictional sample, not your listening.' : ''}${s.restored ? ' Restored user-editable history; provenance is not authenticated.' : ''}</p>`;
       $('#download-recap').disabled = !r.plays;

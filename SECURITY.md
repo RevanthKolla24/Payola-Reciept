@@ -16,6 +16,14 @@ key for unrelated Google APIs or store privileged credentials in browser code.
 
 ## Review of GitHub secret-scanning alert #1 — November 5, 2026
 
+**November 10 follow-up:** the rules-equality observation below is historical.
+Current read-only inspection found that deployed rules lack the newer local
+receipt block. Receipt paths are denied by default, not exposed. Live collection
+UI is therefore not evidence of functional receipt access. The old private
+backup directory is empty; a new current-state snapshot was taken separately.
+See `RELEASE-READINESS.md`. Key restrictions, alert status, usage and billing were
+not re-audited in this follow-up, and no production settings were changed.
+
 Read-only checks against GitHub and the real Google project established:
 
 - The only returned repository secret-scanning alert was open alert #1, type

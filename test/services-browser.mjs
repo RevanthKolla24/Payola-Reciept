@@ -17,6 +17,10 @@ try {
   for (const [service, name] of Object.entries(STREAMING_SERVICES)) {
     await page.goto(base + '/import');
     if (service !== 'spotify') await page.locator('#service-picker').selectOption(service);
+    if (service !== 'spotify') {
+      assert.match(await page.locator('#calculation-formula').textContent(), /No history loaded/);
+      assert.equal(await page.locator('.amount-head').textContent(), 'UNPRICED');
+    }
     assert.match(await page.locator('#service-guide-title').textContent(), new RegExp(name));
     await page.locator('[data-mode="manual"]').click();
     await page.locator('#manual-form [name="artist"]').fill('Seven Services Artist');
@@ -53,6 +57,19 @@ try {
     await page.locator('nav a[href="/receipt"]').click();
     assert.match(await page.locator('#receipt').textContent(), new RegExp(name, 'i'));
     assert.match(await page.locator('#receipt .currency-label').textContent(), /UNPRICED/);
+    if (service === 'spotify') {
+      await page.evaluate(() => {
+        window.csvCardText = [];
+        const original = CanvasRenderingContext2D.prototype.fillText;
+        CanvasRenderingContext2D.prototype.fillText = function(...args) { window.csvCardText.push(args[0]); return original.apply(this, args); };
+      });
+      await page.locator('#preview-receipt').click();
+      await page.locator('#receipt-preview-dialog').waitFor({ state: 'visible' });
+      assert.match((await page.evaluate(() => window.csvCardText)).join(' '), /service self-reported, not verified/);
+      assert.match((await page.evaluate(() => window.csvCardText)).join(' '), /Duration and coverage unverified/);
+      await page.locator('#close-receipt-preview').click();
+      assert.equal(await page.locator('#preview-receipt').evaluate(el => el === document.activeElement), true);
+    }
   }
   await page.goto(base + '/import'); await page.locator('#service-picker').selectOption('youtube');
   await page.locator('[data-mode="csv"]').click(); await page.locator('#event-format').selectOption('youtube');
@@ -105,6 +122,40 @@ try {
   await page.waitForFunction(() => document.querySelector('#history-details').textContent.includes('Unavailable in this older backup'));
   await visitControl(page, '#quality-report');
   assert.match(await page.locator('#quality-report').textContent(), /zero exclusions must not be inferred/);
+  await visitControl(page, '#compare-file-a');
+  for (const side of ['a', 'b']) await page.locator(`#compare-file-${side}`).setInputFiles({ name: `${side}.json`, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(oldActivity)) });
+  await page.locator('#compare-sessions').click();
+  await page.waitForFunction(() => !document.querySelector('#download-comparison').hidden);
+  assert.match(await page.locator('#session-comparison').textContent(), /channel names are not verified artists/);
+  assert.match(await page.locator('#session-comparison').textContent(), /provenance is not authenticated/);
+  assert.match(await page.locator('#session-comparison').textContent(), /exclusion counts are unavailable/);
+  // A restored declaration must be explicitly opted in again; scenario images
+  // must retain Last.fm's unknown-duration/eligibility warning.
+  const scenario = sessionText({ mode: 'lastfm', selectedService: 'spotify', records: [{ source: 'lastfm', date: '2026-01-01', artist: 'Scenario artist', track: 'Track', ms: null, supported: true }], filters: { from: '', to: '' }, duplicates: 0,
+    attribution: { service: 'spotify', confirmed: true, scenario: true, from: '2026-01-01', to: '2026-01-02' }, lastfm: { skipped: 0, duplicates: 0 } });
+  await page.locator('#restore-session').setInputFiles({ name: 'scenario.json', mimeType: 'application/json', buffer: Buffer.from(scenario) });
+  await page.waitForFunction(() => !document.querySelector('#restore-scenario').hidden);
+  await page.locator('#restore-scenario').click();
+  await visitControl(page, '#preview-receipt');
+  await page.evaluate(() => {
+    window.scenarioCardText = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function(...args) { window.scenarioCardText.push(args[0]); return original.apply(this, args); };
+  });
+  await page.locator('#preview-receipt').click();
+  await page.locator('#receipt-preview-dialog').waitFor({ state: 'visible' });
+  assert.match((await page.evaluate(() => window.scenarioCardText)).join(' '), /Actual duration and eligibility unknown/);
+  await page.locator('#close-receipt-preview').click();
+  // Imported metadata may contain display controls; normalize only the summary,
+  // preserving the original history in the session.
+  const controls = sessionText({ mode: 'manual', selectedService: 'spotify', records: [], filters: { from: '', to: '' }, duplicates: 0, manual: { artist: 'Artist\u0001Name', plays: 1 } });
+  await visitControl(page, '#restore-session');
+  await page.locator('#restore-session').setInputFiles({ name: 'controls.json', mimeType: 'application/json', buffer: Buffer.from(controls) });
+  await page.waitForFunction(() => document.querySelector('#stat-plays').textContent === '1' && document.querySelector('#view-badge').textContent === 'Self-reported counts');
+  await visitControl(page, '#keep-receipt');
+  await page.locator('#keep-receipt').click();
+  assert.equal(await page.locator('#receipt-editor').isVisible(), true);
+  assert.match(await page.locator('#receipt-pending-preview').textContent(), /Artist Name/);
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 }); await page.goto(base + '/import');
     for (const service of Object.keys(STREAMING_SERVICES)) {

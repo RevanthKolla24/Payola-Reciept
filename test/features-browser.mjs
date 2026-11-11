@@ -21,6 +21,8 @@ try {
   await page.locator('#csv-refresh-preview').click();
   await page.waitForFunction(() => !document.querySelector('#csv-stage').disabled);
   assert.match(await page.locator('#csv-preview').textContent(), /2 included · 1 invalid · 1 short/);
+  assert.match(await page.locator('#csv-preview').textContent(), /Invalid row/);
+  assert.doesNotMatch(await page.locator('#csv-preview').textContent(), /undefined|NaN/);
   await page.locator('[data-guide-key="ms"]').selectOption('');
   assert.equal(await page.locator('#csv-stage').isDisabled(), true, 'Changing mapping invalidates the preview');
   await page.locator('[data-guide-key="ms"]').selectOption('Duration');
@@ -117,6 +119,9 @@ try {
   await page.locator('#manual-form button[type="submit"]').click();
   assert.equal(await page.locator('#stat-plays').textContent(), '30');
   assert.equal(await page.locator('#stat-artists').textContent(), '2');
+  await visitControl(page, '#download-diagnostics');
+  assert.equal(await page.locator('#download-diagnostics').isDisabled(), true);
+  assert.match(await page.locator('#download-diagnostics').textContent(), /unavailable for manual counts/);
   await visitControl(page, '#save-session');
   page.once('dialog', dialog => dialog.accept()); pending = page.waitForEvent('download'); await page.locator('#save-session').click();
   const backup = await readFile(await (await pending).path(), 'utf8');

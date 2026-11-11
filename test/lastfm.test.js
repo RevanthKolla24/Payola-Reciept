@@ -4,9 +4,20 @@ import { validateLastfmQuery, normalizeLastfmPage, fetchLastfmPage, createLimite
 import { loadLastfm } from '../lastfm-client.js';
 import { summarize } from '../lib.js';
 import { summaryCSV } from '../reports.js';
+import { listeningPatterns } from '../explore.js';
+import { sessionText, parseSession } from '../session.js';
 const query = { user: 'tester', from: 1000000000, to: 1000086400, page: 1 };
 const track = { name: 'Track', artist: { '#text': 'Artist' }, date: { uts: '1000000000' } };
 const response = (tracks = [track], page = 1, pages = 1) => ({ recenttracks: { track: tracks, '@attr': { page: String(page), totalPages: String(pages) } } });
+test('Last.fm precise timestamps survive client loading and session backups for UTC patterns', async () => {
+  const normalized = normalizeLastfmPage(response(), query);
+  const loaded = await loadLastfm({ user: 'tester', from: '2001-09-09', to: '2001-09-10', fetcher: async () => Response.json(normalized) });
+  const restored = parseSession(sessionText({ mode: 'lastfm', selectedService: 'spotify', records: loaded.records, filters: { from: '', to: '' }, duplicates: 0,
+    attribution: { service: 'unknown', confirmed: false, scenario: false, from: '2001-09-09', to: '2001-09-10' }, lastfm: { skipped: loaded.skipped, duplicates: loaded.duplicates } }));
+  assert.equal(restored.records[0].timestamp, '2001-09-09T01:46:40.000Z');
+  const patterns = listeningPatterns(restored.records);
+  assert.equal(patterns.timed, 1); assert.equal(patterns.hours[1], 1); assert.equal(patterns.weekdays[0], 1);
+});
 test('validates proxy inputs and rejects URL injection and invalid ranges', () => {
   assert.deepEqual(validateLastfmQuery(new URLSearchParams(query)), query);
   for (const overrides of [{ user: '../secret' }, { page: '1.2' }, { from: '-1' }, { to: '0' }, { page: '101' }]) assert.throws(() => validateLastfmQuery(new URLSearchParams({ ...query, ...overrides })));

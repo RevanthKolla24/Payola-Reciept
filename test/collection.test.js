@@ -61,3 +61,12 @@ test('download is an escaped self-contained SVG with preserved disclosures', () 
   assert.ok(svg.includes('not verified earnings.'));
   assert.ok(svg.includes('not a full-history backup.'));
 });
+
+test('SVG wrapping preserves Unicode code points and bounds multilingual text', () => {
+  const title = 'a'.repeat(51) + '🎵' + 'b'.repeat(40);
+  const svg = receiptSVG({ ...receipt, title, note: '音楽'.repeat(100) });
+  const lines = [...svg.matchAll(/<text\b[^>]*>(.*?)<\/text>/g)].map(match => match[1]);
+  assert.equal(lines.slice(1).join('').includes(title), true);
+  for (const line of lines) assert.doesNotMatch(line, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+  assert.match(svg, /textLength="[\d.]+" lengthAdjust="spacingAndGlyphs"/);
+});

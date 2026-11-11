@@ -9,6 +9,20 @@ import { encodeCloud, decodeCloud } from '../cloud.js';
 const row = (date, extra = {}) => ({ date, artist: 'Artist', track: 'Song', ms: 60000, supported: true, ...extra });
 const state = (records, extra = {}) => ({ mode: 'import', selectedService: 'spotify', records, filters: { from: '', to: '' }, duplicates: 0, ...extra });
 
+test('comparison exports retain unauthenticated provenance and activity limitations per input', () => {
+  const activityAudit = { files: 1, records: 3, accepted: 1, ambiguous: 1, nonListening: 1, invalid: 0 };
+  const activity = parseSession(sessionText(state([row('2026-01-01', { source: 'csv', origin: 'youtube-takeout', ms: null })], { mode: 'csv', selectedService: 'youtube', activityAudit })));
+  const result = compareSessions(activity, parseSession(sessionText(state([]))));
+  assert.equal(result.left.activityAudit.ambiguous, 1);
+  assert.equal(result.left.youtubeActivity, true);
+  assert.match(result.left.disclosure, /channel names are not verified artists/);
+  assert.match(result.left.disclosure, /user-editable.*not authenticated/);
+  assert.match(result.right.disclosure, /user-editable.*not authenticated/);
+  assert.equal(result.right.youtubeActivity, false);
+  delete activity.activityAudit;
+  assert.match(compareSessions(activity, activity).left.disclosure, /exclusion counts.*unavailable/i);
+});
+
 test('manual artist rows combine exact names, validate totals and round trip without invented metadata', () => {
   const entries = [{ artist: ' A ', plays: 3 }, { artist: 'B', plays: 7 }, { artist: 'A', plays: 2 }];
   const summary = manualArtistsSummary(entries);

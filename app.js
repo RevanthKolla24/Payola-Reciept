@@ -219,6 +219,10 @@ function renderAttribution() {
     $('#receipt .receipt-disclaimer').textContent = 'No history loaded. Service selection does not confirm the source of any listening.';
     $('#receipt').querySelectorAll('.receipt-line').forEach((line, index) => { if (index) line.hidden = true; });
     $('.assumptions-card').hidden = true;
+    $('#calculation-formula').textContent = 'No history loaded. No royalty estimate.';
+    $('.amount-head').textContent = 'UNPRICED';
+    $('.table-footer > span:last-child').textContent = 'No history loaded · no royalty estimate';
+    $('#stat-plays').nextElementSibling.textContent = 'Choose a listening source to begin';
     $('#data-note').textContent = 'Choose Last.fm, manual counts, or a supported file import above. Histories from different sources are never merged.';
     return;
   }
@@ -706,6 +710,11 @@ async function downloadCard(artist = null, style = 'value', preview = false) {
   } else if (activityLines) {
     activityLines.forEach((value, index) => text(value, 135, 1060 + extraHeight + index * 34, '19px Arial'));
   } else { text('Your listening, not a royalty or payout statement.', 135, 1070 + extraHeight, '23px Arial'); text(mode === 'lastfm' ? 'Data from Last.fm. Duration and eligibility unknown.' : 'Only included plays from the selected source.', 135, 1110 + extraHeight, '21px Arial'); }
+  if (mode === 'csv' && !activityLines) {
+    text('User-provided events; service self-reported, not verified.', 135, 1140 + extraHeight, '19px Arial');
+    text('Duration and coverage unverified; no royalty estimate.', 135, 1174 + extraHeight, '19px Arial');
+  }
+  if (mode === 'lastfm' && valueCard) text('Data from Last.fm. Actual duration and eligibility unknown.', 135, 1174 + extraHeight, '19px Arial');
   text('THANK YOU FOR LISTENING', 135, 1240 + extraHeight, '23px monospace'); text('Payola Reciept', 135, 1285 + extraHeight, '20px Arial');
   const logo = await loadCardLogo();
   if (preview && !isCurrentPreview()) return;
@@ -795,7 +804,7 @@ initAccounts({ capture: captureSession, preservation, navigate,
       title: mode === 'sample' ? 'Fictional sample receipt' : 'My rotation receipt', note: '', theme: 'paper',
       source: `${text('#receipt .receipt-source > span:first-child')} · ${mode === 'csv' ? youtubeActivity() ? 'MUSIC-MARKED ACTIVITY' : 'USER-PROVIDED CSV' : mode === 'lastfm' ? 'LAST.FM SCROBBLES' : text('#receipt-type')}`,
       period: text('#receipt-period'), amount: text('#receipt-total'), label: text('#receipt .receipt-amount-label'),
-      plays: text('#receipt-plays'), highlights: result.artists.slice(0, 3).map(artist => `${artist.name}: ${number(artist.plays)} plays`).join(' · '),
+      plays: text('#receipt-plays'), highlights: result.artists.slice(0, 3).map(artist => `${artist.name}: ${number(artist.plays)} plays`).join(' · ').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ' '),
       disclosure: `${text('#receipt .currency-label')}. ${text('#receipt .receipt-disclaimer')} ${text('#history-warning')} Saved summary only, not a full-history backup.`
     };
   }, localBusy: () => busy || csvGuide.pending || Boolean(lastfmController) || restoring,

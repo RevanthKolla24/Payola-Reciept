@@ -27,7 +27,8 @@ export function normalizeLastfmPage(data, query) {
     const artist = typeof t?.artist?.['#text'] === 'string' ? t.artist['#text'].trim() : '';
     const track = typeof t?.name === 'string' ? t.name.trim() : '';
     if (!Number.isSafeInteger(timestamp) || timestamp < query.from || timestamp >= query.to || !artist || !track || artist.length > 500 || track.length > 1000) { skipped++; continue; }
-    records.push({ source: 'lastfm', date: new Date(timestamp * 1000).toISOString().slice(0, 10), artist, track, ms: null, supported: true,
+    const precise = new Date(timestamp * 1000).toISOString();
+    records.push({ source: 'lastfm', date: precise.slice(0, 10), timestamp: precise, artist, track, ms: null, supported: true,
       eventKey: JSON.stringify([timestamp, artist, track]) });
   }
   return { records, skipped, page, totalPages };

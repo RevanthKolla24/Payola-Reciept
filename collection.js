@@ -58,15 +58,19 @@ export function receiptSVG(value) {
     .filter(Boolean).flatMap(line => {
       const words = line.split(/\s+/), wrapped = []; let current = '';
       for (const word of words) {
-        if (current.length + word.length > 52) { wrapped.push(current); current = ''; }
-        for (let i = 0; i < word.length; i += 52) {
-          const part = word.slice(i, i + 52);
-          if (i + 52 < word.length) wrapped.push(part); else current += `${current ? ' ' : ''}${part}`;
+        const points = Array.from(word);
+        if (Array.from(current).length + (current ? 1 : 0) + points.length > 52 && current) { wrapped.push(current); current = ''; }
+        for (let i = 0; i < points.length; i += 52) {
+          const part = points.slice(i, i + 52).join('');
+          if (i + 52 < points.length) wrapped.push(part); else current += `${current ? ' ' : ''}${part}`;
         }
       }
       if (current) wrapped.push(current);
       return [...wrapped, ''];
     });
   const dark = receipt.theme === 'midnight';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="${120 + lines.length * 24}" viewBox="0 0 640 ${120 + lines.length * 24}"><rect width="100%" height="100%" fill="${dark ? '#18251f' : '#fffaf0'}"/><g fill="${dark ? '#fffaf0' : '#18251f'}" font-family="monospace" font-size="17"><text x="36" y="44">PAYOLA RECIEPT · PRIVATE COLLECTION</text>${lines.map((line, i) => `<text x="36" y="${88 + i * 24}">${xml(line)}</text>`).join('')}</g></svg>`;
+  // Non-ASCII fallback fonts may be wider than monospace Latin. Bound their
+  // advance explicitly without splitting surrogate pairs between SVG nodes.
+  const fit = line => /[^\x00-\x7f]/.test(line) ? ` textLength="${Math.min(568, Array.from(line).reduce((width, char) => width + (char.codePointAt(0) > 255 ? 17 : 10.2), 0)).toFixed(1)}" lengthAdjust="spacingAndGlyphs"` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="${120 + lines.length * 24}" viewBox="0 0 640 ${120 + lines.length * 24}"><rect width="100%" height="100%" fill="${dark ? '#18251f' : '#fffaf0'}"/><g fill="${dark ? '#fffaf0' : '#18251f'}" font-family="monospace" font-size="17"><text x="36" y="44">PAYOLA RECIEPT · PRIVATE COLLECTION</text>${lines.map((line, i) => `<text x="36" y="${88 + i * 24}"${fit(line)}>${xml(line)}</text>`).join('')}</g></svg>`;
 }

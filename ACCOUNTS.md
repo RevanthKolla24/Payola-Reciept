@@ -1,5 +1,21 @@
 # Optional shared accounts — real Firebase project
 
+## Current read-only status — November 10, 2026
+
+The active deployed Firestore release does **not** include the local receipt rule
+block; it was last updated November 4, 2026. Receipt access is denied by default,
+even though the live site serves collection UI. Do not interpret older statements
+that deployed rules match the repository as applying to the newer receipt rules.
+Live accounts remain enabled, email/password sign-in is enabled, and the Payola
+hostname is authorized. Inbox completion and shared-app behavior remain unverified.
+The live application also differs from candidate commit `9a97ed7`; the three new
+service-support module URLs return 404. No production changes were made during
+this review. See `RELEASE-READINESS.md` for evidence and the approval sequence.
+
+The historical `/tmp/payola-firebase-production-backup` directory is now empty.
+The new private `/tmp/payola-production-readonly-2026-11-10` snapshot captures
+current settings only; it cannot recover the original pre-change configuration.
+
 ## Receipt collection — local, undeployed
 
 Phase 1 adds a separate private receipt-summary collection with 20 fixed slots under `payolaUsers/{uid}/receipts/{slot}`. Verified owners alone may read/write; Job Tracker admins have no exception. Transactions enforce incrementing versions, including empty tombstones on deletion, to detect stale-device edits and prevent raw-history storage through the receipt schema. The client validates loaded summaries and rejects unknown fields; rules bound every field and slot.

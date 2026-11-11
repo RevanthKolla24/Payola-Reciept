@@ -2,6 +2,7 @@ import { summarize, validTimestamp } from './lib.js';
 import { bounds, comparePeriods } from './reports.js';
 import { listeningInsights } from './insights.js';
 import { validateActivityAudit } from './import-audit.js';
+import { YOUTUBE_ACTIVITY_DISCLOSURE } from './service-history.js';
 
 export function includedRecords(records, filters = {}) {
   return records.filter(r => !r.invalid && r.supported && (!filters.from || r.date >= filters.from) && (!filters.to || r.date <= filters.to) && (r.source === 'lastfm' || r.ms === null || r.ms >= 30000));
@@ -55,7 +56,17 @@ export function compareSessions(left, right) {
     const before = artistsA.get(name)?.plays || 0, after = artistsB.get(name)?.plays || 0;
     return { name, before, after, delta: (b.plays ? after / b.plays * 100 : 0) - (a.plays ? before / a.plays * 100 : 0) };
   }).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta) || x.name.localeCompare(y.name));
-  const describe = (s, summary) => ({ mode: s.mode, service: s.mode === 'lastfm' ? s.attribution.confirmed ? s.attribution.service : 'unknown' : s.selectedService, plays: summary.plays, hours: s.mode === 'lastfm' || summary.ms === null ? null : summary.ms / 3600000, artists: summary.artists.length, observed: bounds(s.records.filter(r => !r.invalid)), filters: s.filters, declaration: s.mode === 'lastfm' ? { service: s.attribution.service, confirmed: s.attribution.confirmed, from: s.attribution.from, to: s.attribution.to } : null });
+  const describe = (s, summary) => {
+    const youtubeActivity = s.records.some(r => r.origin === 'youtube-takeout');
+    const disclosure = 'Session files are user-editable; provenance is not authenticated. Comparisons are unpriced; coverage completeness is not verified.'
+      + (s.mode === 'sample' ? ' Fictional demonstration data, not personal listening history.' : '')
+      + (s.mode === 'csv' || s.mode === 'manual' ? ' Service attribution is self-reported, not verified.' : '')
+      + (s.mode === 'lastfm' ? ' Last.fm scrobbles are not verified paid streams; actual duration and eligibility unknown.' : '')
+      + (youtubeActivity ? ` ${YOUTUBE_ACTIVITY_DISCLOSURE}${s.activityAudit ? '' : ' Activity input exclusion counts are unavailable; zero exclusions must not be inferred.'}` : '');
+    return { mode: s.mode, service: s.mode === 'lastfm' ? s.attribution.confirmed ? s.attribution.service : 'unknown' : s.selectedService, plays: summary.plays, hours: s.mode === 'lastfm' || summary.ms === null ? null : summary.ms / 3600000, artists: summary.artists.length, observed: bounds(s.records.filter(r => !r.invalid)), filters: s.filters, disclosure, youtubeActivity,
+      ...(s.activityAudit ? { activityAudit: validateActivityAudit(s.activityAudit) } : {}),
+      declaration: s.mode === 'lastfm' ? { service: s.attribution.service, confirmed: s.attribution.confirmed, from: s.attribution.from, to: s.attribution.to } : null };
+  };
   return { left: describe(left, a), right: describe(right, b), sharedArtists, sharedTracks: [...ta].filter(key => tb.has(key)).length, changes };
 }
 
